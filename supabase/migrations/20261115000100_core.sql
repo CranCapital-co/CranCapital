@@ -509,10 +509,8 @@ begin
      where id = p.id
     returning * into p;
   end if;
-  if p.last_seen_at < now() - interval '30 seconds' then
-    update game.players set last_seen_at = now() where id = p.id;
-    p.last_seen_at := now();
-  end if;
+  -- last_seen_at is refreshed by heartbeat() and report_position(), not
+  -- here, so actions don't lock the player row before the market row.
   return p;
 end $$;
 
@@ -554,7 +552,7 @@ begin
   end if;
   if p.lat is not null and p.pos_at is not null then
     v_elapsed := greatest(0, extract(epoch from now() - p.pos_at));
-    v_allowed := 40 + v_elapsed * game.cfg('max_walk_speed');
+    v_allowed := 10 + v_elapsed * game.cfg('max_walk_speed');
     v_dist := game.dist_m(p.lat, p.lng, p_lat, p_lng);
     if v_dist > v_allowed then
       -- Too far for the time elapsed: move as far as allowed toward it.

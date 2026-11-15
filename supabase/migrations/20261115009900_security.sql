@@ -23,7 +23,8 @@ begin
 end $$;
 
 revoke all on schema game from public, anon, authenticated;
-revoke all on all functions in schema game from public, anon, authenticated;
+revoke all on all routines in schema game from public, anon, authenticated;
+alter default privileges in schema game revoke all on routines from public;
 revoke all on all sequences in schema game from public, anon, authenticated;
 alter default privileges in schema game revoke all on functions from public;
 
@@ -50,6 +51,31 @@ begin
   end loop;
 end $$;
 
+-- Who may listen to a private Realtime topic: their own user channel, open
+-- chat (global, cities), and private chats (DMs, player channels) they're in.
+create or replace function public.realtime_can_listen(p_topic text) returns boolean
+language plpgsql stable security definer set search_path = game, pg_temp as $$
+declare
+  v_uid uuid := game.uid();
+  v_id bigint;
+begin
+  if v_uid is null or p_topic is null then return false; end if;
+  if p_topic = 'user:' || v_uid::text then return true; end if;
+  if p_topic like 'chat:%' then
+    begin
+      v_id := substr(p_topic, 6)::bigint;
+    exception when others then
+      return false;
+    end;
+    return exists (select 1 from game.chat_channels ch where ch.id = v_id
+                     and (ch.kind in ('global', 'city')
+                          or exists (select 1 from game.chat_members m where m.channel_id = ch.id and m.player_id = v_uid)));
+  end if;
+  return false;
+end $$;
+revoke all on function public.realtime_can_listen(text) from public, anon;
+grant execute on function public.realtime_can_listen(text) to authenticated;
+
 -- Realtime authorization (private channels).
 do $$
 begin
@@ -59,10 +85,7 @@ begin
     execute $p$
       create policy "crancapital receive own and chat" on realtime.messages
       for select to authenticated
-      using (
-        realtime.topic() = 'user:' || (select auth.uid())::text
-        or realtime.topic() like 'chat:%'
-      )
+      using (public.realtime_can_listen(realtime.topic()))
     $p$;
   end if;
 end $$;

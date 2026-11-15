@@ -2,7 +2,7 @@
 import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  db, q, one, newPlayer, rpc, rpcError, streetNear, setLocalHour, runTickAfter, ledgerMismatches, anonClient,
+  db, q, one, newPlayer, rpc, rpcError, streetNear, setLocalHour, runTickAfter, ledgerMismatches, anonClient, standAt,
 } from './helpers.mjs';
 
 before(async () => {
@@ -42,6 +42,7 @@ test('buying a cart on a street, first sales, ledger stays exact', async () => {
   const inside = await rpcError(client, 'buy_cart', { p_name: 'Nope', p_lat: bld.lat, p_lng: bld.lng });
   assert.ok(inside, 'placing far away or inside a building must fail');
 
+  await standAt(id, spot);
   const res = await rpc(client, 'buy_cart', { p_name: 'Salad Days', p_lat: spot.lat, p_lng: spot.lng });
   assert.ok(res.business_id);
   assert.equal(res.starter_stock, true);
@@ -67,9 +68,10 @@ test('carts cannot teleport across the city', async () => {
 });
 
 test('menus: prices and items are validated', async () => {
-  const { client } = await newPlayer('Menu');
+  const { client, id } = await newPlayer('Menu');
   const city = await one(`select * from game.cities where id = 'london'`);
   const spot = await streetNear('london', city.start_lat, city.start_lng, 40);
+  await standAt(id, spot);
   const { business_id } = await rpc(client, 'buy_cart', { p_name: 'Menu Test', p_lat: spot.lat, p_lng: spot.lng });
   assert.match(await rpcError(client, 'set_menu', { p_id: business_id, p_menu: [{ id: 'pasta', price: 14000 }] }), /can't be sold here/);
   assert.match(await rpcError(client, 'set_menu', { p_id: business_id, p_menu: [{ id: 'salad', price: 1 }] }), /between/);
@@ -124,7 +126,8 @@ test('resting buy order gets filled by market traders when price comes to it', a
   const r = await rpc(a.client, 'place_order', { p_good: 'wheat', p_side: 'buy', p_qty: 1000, p_price: m.npc.bid });
   assert.equal(r.resting, 1000);
   // Push the traders' ask down to the order by selling lots of wheat as another player.
-  await q(`update game.markets set ref_price = $1 / 1.1 where good_id = 'wheat'`, [m.npc.bid]);
+  // Drop the traders' price below the order: they fill it, charging no more than its limit.
+  await q(`update game.markets set ref_price = $1 / 1.1 * 0.95 where good_id = 'wheat'`, [m.npc.bid]);
   await q('call game.tick()');
   const orders = await rpc(a.client, 'my_orders');
   assert.equal(orders.open.filter((o) => o.good_id === 'wheat').length, 0, 'order filled');
@@ -187,6 +190,7 @@ test('offline cap: businesses pause 24 hours after the owner was last seen', asy
   const { client, id } = await newPlayer('Sleeper');
   const city = await one(`select * from game.cities where id = 'london'`);
   const spot = await streetNear('london', city.start_lat, city.start_lng, 80);
+  await standAt(id, spot);
   const { business_id } = await rpc(client, 'buy_cart', { p_name: 'Sleepy', p_lat: spot.lat, p_lng: spot.lng });
   await q(`update game.players set last_seen_at = now() - interval '25 hours' where id = $1`, [id]);
   const cash0 = (await one('select cash from game.players where id = $1', [id])).cash;
@@ -233,5 +237,50 @@ test('land, farms, auto-sell, surveys and mines', async () => {
 test('cash can never go negative and every dollar is in the ledger', async () => {
   const bad = await one('select count(*)::int n from game.players where cash < 0');
   assert.equal(bad.n, 0);
+  assert.deepEqual(await ledgerMismatches(), []);
+});
+
+test('exploit regression: a huge resting order swept by traders cannot print money', async () => {
+  const a = await newPlayer('Whale');
+  await q(`select game.money($1, 190000000, 'admin', 'test funds')`, [a.id]);
+  const start = (await rpc(a.client, 'get_me')).cash;
+  const m = await rpc(a.client, 'market_good', { p_good: 'wasabi' });
+  const r = await rpc(a.client, 'place_order', { p_good: 'wasabi', p_side: 'buy', p_qty: 3000000, p_price: m.npc.ask });
+  assert.ok(r.resting > 0);
+  await q('select game.markets_tick()');
+  const orders = await rpc(a.client, 'my_orders');
+  const o = orders.open.find((x) => x.good_id === 'wasabi');
+  if (o) await rpc(a.client, 'cancel_order', { p_order: o.id });
+  const st = await rpc(a.client, 'my_storage');
+  const held = st.find((x) => x.city_id === 'london').goods.find((g) => g.good === 'wasabi')?.qty ?? 0;
+  if (held > 0) await rpc(a.client, 'place_order', { p_good: 'wasabi', p_side: 'sell', p_qty: held, p_price: 1 });
+  const end = (await rpc(a.client, 'get_me')).cash;
+  assert.ok(end <= start, `no profit from the round trip: ${start} -> ${end}`);
+  assert.deepEqual(await ledgerMismatches(), []);
+  await q(`update game.markets set ref_price = 60 where good_id = 'wasabi'`);
+});
+
+test('exploit regression: selling land between friends and back to the city mints nothing', async () => {
+  const a = await newPlayer('Seller');
+  const b = await newPlayer('Alt');
+  for (const x of [a, b]) {
+    await q('update game.players set tier = 3 where id = $1', [x.id]);
+    await q(`select game.money($1, 500000000, 'admin', 'test funds')`, [x.id]);
+  }
+  const plot = await one(`with c as (select * from game.cities where id = 'london')
+      select x px, y py, (game.plot_center(c, x, y)).lat lat, (game.plot_center(c, x, y)).lng lng
+        from c, generate_series(0, c.plot_w - 1) x, generate_series(0, c.plot_h - 1) y
+       where game.plot_buildable(c, x, y) and not exists (select 1 from game.plots p where p.city_id = 'london' and p.px = x and p.py = y)
+       offset 3 limit 1`);
+  await q('update game.players set lat = $2, lng = $3, pos_at = now() where id = $1', [a.id, plot.lat, plot.lng]);
+  const total0 = BigInt((await one('select sum(cash) s from game.players where id = any($1)', [[a.id, b.id]])).s);
+  const bought = await rpc(a.client, 'buy_plot', { p_city: 'london', p_px: plot.px, p_py: plot.py, p_lat: plot.lat, p_lng: plot.lng });
+  await rpc(a.client, 'set_plot_sale', { p_city: 'london', p_px: plot.px, p_py: plot.py, p_price: 400000000 });
+  assert.match(await rpcError(b.client, 'buy_listed_plot', { p_city: 'london', p_px: plot.px, p_py: plot.py, p_expected_price: 1 }), /asking price changed/);
+  await rpc(b.client, 'buy_listed_plot', { p_city: 'london', p_px: plot.px, p_py: plot.py, p_expected_price: 400000000 });
+  const back = await rpc(b.client, 'sell_plot_to_city', { p_city: 'london', p_px: plot.px, p_py: plot.py });
+  assert.equal(back.received, Math.round(bought.price * 0.7), 'refund based on what the city sold it for');
+  const total1 = BigInt((await one('select sum(cash) s from game.players where id = any($1)', [[a.id, b.id]])).s);
+  assert.ok(total1 < total0, 'the pair lost money overall');
   assert.deepEqual(await ledgerMismatches(), []);
 });

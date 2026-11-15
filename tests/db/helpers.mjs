@@ -69,6 +69,8 @@ export async function streetNear(city, lat, lng, skip = 0) {
      select c.lat0 + (pt.cy0 + dy + 0.5) * 5 / c.ky as lat, c.lng0 + (pt.cx0 + dx + 0.5) * 5 / c.kx as lng
        from c, pt, generate_series(-30, 30) dx, generate_series(-30, 30) dy
       where game.walkable(c, c.lat0 + (pt.cy0 + dy + 0.5) * 5 / c.ky, c.lng0 + (pt.cx0 + dx + 0.5) * 5 / c.kx)
+        and not exists (select 1 from game.businesses b where b.city_id = $1 and b.kind = 'cart' and b.status in ('open', 'closed')
+              and game.dist_m(b.lat, b.lng, c.lat0 + (pt.cy0 + dy + 0.5) * 5 / c.ky, c.lng0 + (pt.cx0 + dx + 0.5) * 5 / c.kx) < 15)
       order by dx * dx + dy * dy limit 1 offset $4`,
     [city, lat, lng, skip]
   );
@@ -95,4 +97,9 @@ export async function ledgerMismatches() {
   return q(`select p.id, p.display_name, p.cash, coalesce(sum(l.amount), 0) as ledger
               from game.players p left join game.ledger l on l.player_id = p.id
              group by p.id having p.cash <> coalesce(sum(l.amount), 0)`);
+}
+
+// Put a player at a spot, as if they had walked there.
+export async function standAt(playerId, spot) {
+  await q('update game.players set lat = $2, lng = $3, pos_at = now() where id = $1', [playerId, spot.lat, spot.lng]);
 }

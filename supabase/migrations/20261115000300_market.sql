@@ -135,6 +135,12 @@ returns void language sql set search_path = game, pg_temp as $$
         volume = c.volume + excluded.volume
 $$;
 
+-- Reference prices stay within 1/20 and 20x of base.
+create function game.clamp_ref(p_good text, p_ref float8) returns float8
+language sql stable set search_path = game, pg_temp as $$
+  select least(greatest(p_ref, base_price / 20.0), base_price * 20.0) from game.goods where id = p_good
+$$;
+
 -- Price impact constant: trading `depth` units moves the reference ~10%.
 create function game.impact_k(p_good text) returns float8
 language sql stable set search_path = game, pg_temp as $$
@@ -207,6 +213,8 @@ begin
     end if;
     q := least(q, floor(ln(p_max_unit / ask0) / k)::bigint);
   end if;
+  -- Never move the price more than e^5 in one trade (also avoids overflow).
+  q := least(q, floor(5 / k)::bigint);
   if q <= 0 then
     return;
   end if;
@@ -216,7 +224,7 @@ begin
     format('Bought %s %s from market traders', q, (select name from game.goods where id = p_good)),
     jsonb_build_object('good', p_good, 'qty', q));
   perform game.stock_add(p_player, p_city, p_good, q, p_check_capacity);
-  update game.markets set ref_price = ref_price * exp(k * q) where good_id = p_good;
+  update game.markets set ref_price = game.clamp_ref(p_good, ref_price * exp(k * q)) where good_id = p_good;
   perform game.record_trade(p_good, greatest(1, round(cost::numeric / q))::bigint, q, cost, 0, p_player, null);
 end $$;
 
@@ -243,13 +251,14 @@ begin
     end if;
     q := least(q, floor(ln(bid0 / greatest(p_min_unit, 1e-9)) / k)::bigint);
   end if;
+  q := least(q, floor(5 / k)::bigint);
   if q <= 0 then
     return;
   end if;
   value := floor(bid0 * (1 - exp(-k * q)) / k)::bigint;
   sold := q;
   v_fee := game.pay_seller(p_player, p_good, q, value, p_kind);
-  update game.markets set ref_price = ref_price * exp(-k * q) where good_id = p_good;
+  update game.markets set ref_price = game.clamp_ref(p_good, ref_price * exp(-k * q)) where good_id = p_good;
   perform game.record_trade(p_good, greatest(1, round(value::numeric / q))::bigint, q, value, v_fee, null, p_player);
 end $$;
 
@@ -425,13 +434,13 @@ create function game.cancel_order(p game.players, p_order bigint) returns jsonb
 language plpgsql set search_path = game, pg_temp as $$
 declare
   o game.orders;
+  v_good text;
   left_qty bigint;
 begin
-  select * into o from game.orders where id = p_order and player_id = p.id for update;
+  -- Same lock order as matching: market first, then the order.
+  select good_id into v_good from game.orders where id = p_order and player_id = p.id;
   if not found then perform game.fail('Order not found.'); end if;
-  if o.status <> 'open' then perform game.fail('That order is already closed.'); end if;
-  -- Lock the market like matching does, so a fill can't race the cancel.
-  perform 1 from game.markets where good_id = o.good_id for update;
+  perform 1 from game.markets where good_id = v_good for update;
   select * into o from game.orders where id = p_order for update;
   if o.status <> 'open' then perform game.fail('That order is already closed.'); end if;
   left_qty := o.qty - o.filled;
@@ -448,59 +457,81 @@ begin
 end $$;
 
 -- Market traders sweep resting player orders their quotes have crossed,
--- and reference prices drift back toward base. Runs every tick.
+-- trading with the same price impact as any other trade and only as far as
+-- each order's limit; then the reference price drifts back toward base.
+-- Called once per good per tick, each in its own transaction.
+create function game.market_tick_good(p_good text) returns void
+language plpgsql set search_path = game, pg_temp as $$
+declare
+  g game.goods;
+  o game.orders;
+  r record;
+  v_ref float8;
+  v_take bigint;
+  v_release bigint;
+  i int := 0;
+  rev float8 := game.cfg('npc_reversion_per_tick');
+begin
+  select * into g from game.goods where id = p_good;
+  select ref_price into v_ref from game.markets where good_id = p_good for update;
+  loop
+    i := i + 1;
+    exit when i > 50;
+    select ref_price into v_ref from game.markets where good_id = p_good;
+    -- Sell orders at or under the traders' bid.
+    select * into o from game.orders
+     where good_id = p_good and side = 'sell' and status = 'open' and price <= game.npc_bid(v_ref)
+     order by price, created_at limit 1 for update;
+    if found then
+      select * into r from game.npc_buy_from(o.player_id, p_good, o.qty - o.filled, o.price::float8);
+      if r.sold > 0 then
+        update game.orders set filled = filled + r.sold, updated_at = now(),
+               status = case when filled + r.sold >= qty then 'filled' else 'open' end where id = o.id;
+        perform game.notify(o.player_id, 'order', format('Sold %s %s', r.sold, g.name),
+          format('Market traders bought from your sell order for %s.', game.fmt(r.value)), jsonb_build_object('order', o.id));
+        continue;
+      end if;
+    end if;
+    -- Buy orders at or over the traders' ask.
+    select * into o from game.orders
+     where good_id = p_good and side = 'buy' and status = 'open' and price >= game.npc_ask(v_ref)
+     order by price desc, created_at limit 1 for update;
+    exit when not found;
+    v_take := least(o.qty - o.filled, floor(ln(o.price / game.npc_ask(v_ref)) / game.impact_k(p_good))::bigint, floor(5 / game.impact_k(p_good))::bigint);
+    exit when v_take <= 0;
+    -- Release the held cash for these units; the traders charge the real cost (never more).
+    v_release := v_take * o.price;
+    perform game.money(o.player_id, v_release, 'escrow_return', 'Buy order filled', jsonb_build_object('order', o.id));
+    select * into r from game.npc_sell_to(o.player_id, p_good, v_take, o.price::float8, o.city_id, false);
+    update game.orders set filled = filled + r.bought, escrow = escrow - v_release, updated_at = now(),
+           status = case when filled + r.bought >= qty then 'filled' else 'open' end where id = o.id;
+    if r.bought < v_take then
+      -- Put back the escrow for units that weren't bought.
+      perform game.money(o.player_id, -((v_take - r.bought) * o.price), 'escrow', 'Buy order still open', jsonb_build_object('order', o.id));
+      update game.orders set escrow = escrow + (v_take - r.bought) * o.price where id = o.id;
+    end if;
+    perform game.notify(o.player_id, 'order', format('Bought %s %s', r.bought, g.name),
+      format('Market traders filled your buy order for %s.', game.fmt(r.cost)), jsonb_build_object('order', o.id));
+    exit when r.bought = 0;
+  end loop;
+  update game.markets
+     set ref_price = game.clamp_ref(p_good, ref_price + (g.base_price - ref_price) * rev), updated_at = now()
+   where good_id = p_good;
+  insert into game.candles (good_id, bucket, open, high, low, close, volume)
+  select good_id, date_trunc('hour', now()), round(ref_price), round(ref_price), round(ref_price), round(ref_price), 0
+    from game.markets where good_id = p_good
+  on conflict (good_id, bucket) do nothing;
+end $$;
+
+-- All goods in one go (tests and manual runs); the tick does one good per transaction.
 create function game.markets_tick() returns void
 language plpgsql set search_path = game, pg_temp as $$
 declare
-  m record;
-  o game.orders;
-  k float8;
-  val bigint;
-  fee bigint;
-  rev float8 := game.cfg('npc_reversion_per_tick');
+  g record;
 begin
-  for m in select mk.*, g.base_price, g.name from game.markets mk join game.goods g on g.id = mk.good_id loop
-    perform 1 from game.markets where good_id = m.good_id for update;
-    k := game.impact_k(m.good_id);
-    -- Traders buy resting sell orders priced at or under their bid.
-    for o in select * from game.orders
-              where good_id = m.good_id and side = 'sell' and status = 'open'
-                and price <= (select game.npc_bid(ref_price) from game.markets where good_id = m.good_id)
-              order by price, created_at for update loop
-      val := (o.qty - o.filled) * o.price;
-      fee := game.pay_seller(o.player_id, o.good_id, o.qty - o.filled, val, 'npc_trade_sell');
-      perform game.record_trade(o.good_id, o.price, o.qty - o.filled, val, fee, null, o.player_id);
-      update game.markets set ref_price = ref_price * exp(-k * (o.qty - o.filled)) where good_id = o.good_id;
-      update game.orders set filled = qty, status = 'filled', updated_at = now() where id = o.id;
-      perform game.notify(o.player_id, 'order', format('Sold %s %s', o.qty - o.filled, m.name),
-        format('Market traders filled your sell order at %s each.', game.fmt(o.price)), jsonb_build_object('order', o.id));
-    end loop;
-    -- Traders sell into resting buy orders priced at or over their ask.
-    for o in select * from game.orders
-              where good_id = m.good_id and side = 'buy' and status = 'open'
-                and price >= (select game.npc_ask(ref_price) from game.markets where good_id = m.good_id)
-              order by price desc, created_at for update loop
-      val := (o.qty - o.filled) * o.price;
-      perform game.stock_add(o.player_id, o.city_id, o.good_id, o.qty - o.filled, false);
-      perform game.record_trade(o.good_id, o.price, o.qty - o.filled, val, 0, o.player_id, null);
-      -- Release the held cash and spend it with the traders.
-      perform game.money(o.player_id, val, 'escrow_return', 'Buy order filled', jsonb_build_object('order', o.id));
-      perform game.money(o.player_id, -val, 'npc_trade_buy', format('Bought %s %s from market traders', o.qty - o.filled, m.name),
-        jsonb_build_object('order', o.id, 'good', o.good_id, 'qty', o.qty - o.filled));
-      update game.markets set ref_price = ref_price * exp(k * (o.qty - o.filled)) where good_id = o.good_id;
-      update game.orders set filled = qty, escrow = 0, status = 'filled', updated_at = now() where id = o.id;
-      perform game.notify(o.player_id, 'order', format('Bought %s %s', o.qty - o.filled, m.name),
-        format('Market traders filled your buy order at %s each.', game.fmt(o.price)), jsonb_build_object('order', o.id));
-    end loop;
-    update game.markets
-       set ref_price = ref_price + (m.base_price - ref_price) * rev, updated_at = now()
-     where good_id = m.good_id;
+  for g in select id from game.goods order by id loop
+    perform game.market_tick_good(g.id);
   end loop;
-  -- Keep a price point every hour even when nobody trades.
-  insert into game.candles as c (good_id, bucket, open, high, low, close, volume)
-  select good_id, date_trunc('hour', now()), round(ref_price), round(ref_price), round(ref_price), round(ref_price), 0
-    from game.markets
-  on conflict (good_id, bucket) do nothing;
 end $$;
 
 -- Rolling 24h volume, recomputed every few minutes.

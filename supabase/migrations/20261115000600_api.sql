@@ -148,6 +148,10 @@ begin
   if not found then return jsonb_build_object('needs_profile', true); end if;
   v_prev := greatest(raw.last_seen_at, coalesce(raw.away_since, raw.last_seen_at));
   p := game.me(false);
+  update game.players set last_seen_at = now() where id = p.id;
+  if to_regprocedure('game.record_device(uuid)') is not null then
+    execute 'select game.record_device($1)' using p.id;
+  end if;
   if p.last_day is distinct from v_today and p.status = 'active' then
     update game.players set last_day = v_today, days_played = days_played + 1,
            loyalty_points = loyalty_points + game.cfg('loyalty_per_day')::int
@@ -205,13 +209,35 @@ create function public.report_position(p_lat float8, p_lng float8, p_inside bigi
 language plpgsql security definer set search_path = game, pg_temp as $$
 declare
   p game.players := game.me(false);
+  v_inside bigint;
+  bl game.buildings;
 begin
+  update game.players set last_seen_at = now() where id = p.id;
   if p.city_id is null or p.travel_to is not null then
     return jsonb_build_object('lat', p.lat, 'lng', p.lng, 'city_id', p.city_id);
   end if;
-  perform game.rate_limit(p.id::text, 'pos', 30, 60);
-  p := game.set_position(p, p.city_id, p_lat, p_lng, case when p_inside is null then null else game.resolve_building(p_inside) end);
+  perform game.rate_limit(p.id::text, 'pos', 20, 40);
+  if p_inside is not null then
+    select * into bl from game.buildings where id = game.resolve_building(p_inside) and city_id = p.city_id;
+    if found and game.dist_m(bl.lat, bl.lng, p_lat, p_lng) <= game.building_range(bl) then
+      v_inside := bl.id;
+    end if;
+  end if;
+  p := game.set_position(p, p.city_id, p_lat, p_lng, v_inside);
   return jsonb_build_object('lat', p.lat, 'lng', p.lng, 'city_id', p.city_id);
+end $$;
+
+-- The open game calls this every minute; it keeps "last online" fresh,
+-- which is what the 24-hour offline earnings window counts from.
+create function public.heartbeat() returns jsonb
+language plpgsql security definer set search_path = game, pg_temp as $$
+declare
+  p game.players := game.me(false);
+begin
+  update game.players set last_seen_at = now() where id = p.id;
+  return jsonb_build_object('cash', p.cash, 'net_worth', p.net_worth, 'tier', p.tier,
+    'unread', (select count(*) from game.notifications n where n.player_id = p.id and not n.read),
+    'city_id', p.city_id, 'travel_to', p.travel_to, 'travel_arrive_at', p.travel_arrive_at, 'status', p.status);
 end $$;
 
 create function public.taxi(p_lat float8, p_lng float8) returns jsonb
@@ -272,7 +298,10 @@ end $$;
 -- ---------------------------------------------------------------------------
 create function game.business_json(b game.businesses, p_full boolean) returns jsonb
 language sql stable set search_path = game, pg_temp as $$
-  select (to_jsonb(b) - case when p_full then '{}'::text[] else array['settings', 'fitout', 'carry', 'flags'] end)
+  select (case when p_full then to_jsonb(b) - array['owner_id', 'carry', 'fuel_carry']
+          else jsonb_build_object('id', b.id, 'kind', b.kind, 'name', b.name, 'city_id', b.city_id, 'lat', b.lat, 'lng', b.lng,
+                 'level', b.level, 'status', b.status, 'open_hour', b.open_hour, 'close_hour', b.close_hour,
+                 'building_id', b.building_id, 'plot_x', b.plot_x, 'plot_y', b.plot_y, 'created_at', b.created_at) end)
     || jsonb_build_object(
       'type_name', (select name from game.business_types where id = b.kind),
       'icon', (select icon from game.business_types where id = b.kind),
@@ -408,7 +437,10 @@ declare
 begin
   select * into bl from game.buildings where id = game.resolve_building(p_building);
   if not found then return null; end if;
-  return to_jsonb(bl) - 'npc_occupancy' || jsonb_build_object(
+  return jsonb_build_object('id', bl.id, 'city_id', bl.city_id, 'lat', bl.lat, 'lng', bl.lng, 'footprint_m2', bl.footprint_m2,
+    'height_m', bl.height_m, 'levels', bl.levels, 'rooms_total', bl.rooms_total, 'kind', bl.kind, 'name', bl.name, 'landmark', bl.landmark,
+    'traffic', bl.traffic, 'custom_name', bl.custom_name, 'rent_pct', bl.rent_pct, 'for_sale_price', bl.for_sale_price,
+    'bought_price', case when bl.owner_id = v_uid then bl.bought_price end, 'owned', bl.owner_id is not null) || jsonb_build_object(
     'display_name', coalesce(bl.custom_name, bl.name),
     'owner_name', (select display_name from game.players where id = bl.owner_id),
     'owner_no', (select player_no from game.players where id = bl.owner_id),
@@ -501,17 +533,17 @@ create function public.set_plot_sale(p_city text, p_px int, p_py int, p_price bi
 language plpgsql security definer set search_path = game, pg_temp as $$
 begin return game.set_plot_sale(game.me(), p_city, p_px, p_py, p_price); end $$;
 
-create function public.buy_listed_plot(p_city text, p_px int, p_py int) returns jsonb
+create function public.buy_listed_plot(p_city text, p_px int, p_py int, p_expected_price bigint) returns jsonb
 language plpgsql security definer set search_path = game, pg_temp as $$
-begin return game.buy_listed_plot(game.me(), p_city, p_px, p_py); end $$;
+begin return game.buy_listed_plot(game.me(), p_city, p_px, p_py, p_expected_price); end $$;
 
 create function public.sell_plot_to_city(p_city text, p_px int, p_py int) returns jsonb
 language plpgsql security definer set search_path = game, pg_temp as $$
 begin return game.sell_plot_to_city(game.me(), p_city, p_px, p_py); end $$;
 
-create function public.buy_building(p_building bigint, p_lat float8, p_lng float8) returns jsonb
+create function public.buy_building(p_building bigint, p_lat float8, p_lng float8, p_expected_price bigint default null) returns jsonb
 language plpgsql security definer set search_path = game, pg_temp as $$
-begin return game.buy_building(game.me(), p_building, p_lat, p_lng); end $$;
+begin return game.buy_building(game.me(), p_building, p_lat, p_lng, p_expected_price); end $$;
 
 create function public.set_building(p_building bigint, p_rent_pct int default null, p_name text default null, p_for_sale bigint default null) returns jsonb
 language plpgsql security definer set search_path = game, pg_temp as $$
@@ -635,7 +667,9 @@ begin
     'open', (select coalesce(jsonb_agg(to_jsonb(o) || jsonb_build_object('name', g.name, 'icon', g.icon) order by o.created_at desc), '[]'::jsonb)
                from game.orders o join game.goods g on g.id = o.good_id where o.player_id = p.id and o.status = 'open'),
     'recent', (select coalesce(jsonb_agg(to_jsonb(t) order by t.at desc), '[]'::jsonb)
-                 from (select tr.*, g.name, g.icon, case when tr.buyer_id = p.id then 'buy' else 'sell' end as side
+                 from (select tr.id, tr.good_id, tr.price, tr.qty, tr.value, case when tr.seller_id = p.id then tr.fee else 0 end as fee, tr.at,
+                              (tr.buyer_id is null or tr.seller_id is null) as npc,
+                              g.name, g.icon, case when tr.buyer_id = p.id then 'buy' else 'sell' end as side
                          from game.trades tr join game.goods g on g.id = tr.good_id
                         where tr.buyer_id = p.id or tr.seller_id = p.id order by tr.at desc limit 40) t)
   );

@@ -336,14 +336,18 @@ begin
     select * into d from game.deposits where id = b.deposit_id for update;
     v_good := t.resource;
     v_rate := t.rate_per_hour * game.level_mult(b.level);
-    v_diesel_need := ceil(b.level * v_dt);
+    -- Diesel burns at `level` units an hour; fractions carry over between ticks.
+    v_diesel_need := floor(b.level * v_dt + b.fuel_carry);
     select coalesce(qty, 0) into v_have from game.storage where owner_id = b.owner_id and city_id = b.city_id and good_id = 'diesel';
-    if coalesce(v_have, 0) < v_diesel_need then
+    if coalesce(v_have, 0) < v_diesel_need or (coalesce(v_have, 0) = 0 and b.level * v_dt + b.fuel_carry >= 0.999) then
       v_flags := v_flags || '{"no_fuel":true}'::jsonb;
       v_qty := 0;
     else
       v_flags := v_flags - 'no_fuel';
-      perform game.stock_add(b.owner_id, b.city_id, 'diesel', -v_diesel_need, false);
+      if v_diesel_need > 0 then
+        perform game.stock_add(b.owner_id, b.city_id, 'diesel', -v_diesel_need, false);
+      end if;
+      update game.businesses set fuel_carry = (b.level * v_dt + b.fuel_carry) - v_diesel_need where id = b.id;
       v_qty := least(d.units_left, floor(v_rate * v_dt + b.carry));
       update game.businesses set carry = greatest(0, (v_rate * v_dt + b.carry) - v_qty) where id = b.id;
       update game.deposits set units_left = units_left - v_qty where id = d.id;
@@ -360,10 +364,10 @@ begin
   if t.produces = 'recipe' then
     select * into rc from game.recipes where id = t.recipe;
     v_cycles := rc.cycles_per_hour * game.level_mult(b.level) * v_dt + b.carry;
-    v_diesel_need := ceil(rc.diesel_per_hour * b.level * v_dt);
-    if v_diesel_need > 0 then
+    v_diesel_need := floor(rc.diesel_per_hour * b.level * v_dt + b.fuel_carry);
+    if rc.diesel_per_hour > 0 then
       select coalesce(qty, 0) into v_have from game.storage where owner_id = b.owner_id and city_id = b.city_id and good_id = 'diesel';
-      if coalesce(v_have, 0) < v_diesel_need then
+      if coalesce(v_have, 0) < v_diesel_need or coalesce(v_have, 0) = 0 then
         v_cycles := 0;
         v_flags := v_flags || '{"no_fuel":true}'::jsonb;
       else
@@ -385,6 +389,9 @@ begin
       if v_diesel_need > 0 then
         perform game.stock_add(b.owner_id, b.city_id, 'diesel', -v_diesel_need, false);
       end if;
+      if rc.diesel_per_hour > 0 then
+        update game.businesses set fuel_carry = (rc.diesel_per_hour * b.level * v_dt + b.fuel_carry) - v_diesel_need where id = b.id;
+      end if;
       for ing in select key good, value::bigint per from jsonb_each_text(rc.inputs) loop
         perform game.stock_add(b.owner_id, b.city_id, ing.good, -(v_qty * ing.per), false);
       end loop;
@@ -401,8 +408,16 @@ begin
       select v_good, v_prod where t.produces <> 'recipe' or t.produces is null
     loop
       if coalesce((b.settings ->> 'auto_sell')::boolean, false) then
-        select * into s from game.npc_buy_from(b.owner_id, r.good, r.qty, null);
+        -- Sell to market traders, but not below half the base price; keep the rest.
+        select * into s from game.npc_buy_from(b.owner_id, r.good, r.qty,
+          (select base_price * 0.5 from game.goods where id = r.good));
         v_rev := v_rev + coalesce(s.value, 0);
+        if coalesce(s.sold, 0) < r.qty then
+          v_room := game.storage_capacity(b.owner_id, b.city_id) - game.storage_used(b.owner_id, b.city_id);
+          if least(r.qty - coalesce(s.sold, 0), v_room) > 0 then
+            perform game.stock_add(b.owner_id, b.city_id, r.good, least(r.qty - coalesce(s.sold, 0), v_room), false);
+          end if;
+        end if;
       else
         v_room := game.storage_capacity(b.owner_id, b.city_id) - game.storage_used(b.owner_id, b.city_id);
         if v_room < r.qty then
@@ -524,10 +539,28 @@ begin
   delete from game.tick_log where started_at < now() - interval '3 days';
   delete from game.candles where bucket < now() - interval '120 days';
   delete from game.trades where at < now() - interval '45 days';
-  delete from game.ledger where at < now() - interval '400 days';
+  -- The ledger is never pruned: every player's cash must always equal its sum.
   if to_regprocedure('game.social_hourly()') is not null then
     execute 'select game.social_hourly()';
   end if;
+end $$;
+
+-- Runs one named stage of the tick, logging instead of failing.
+create function game.tick_stage_safe(p_stage text, p_arg text default null) returns boolean
+language plpgsql set search_path = game, pg_temp as $$
+begin
+  if p_stage = 'market' then perform game.market_tick_good(p_arg);
+  elsif p_stage = 'property' then perform game.tick_property();
+  elsif p_stage = 'shipments' then perform game.deliver_shipments();
+  elsif p_stage = 'finance' then
+    if to_regprocedure('game.finance_tick()') is not null then execute 'select game.finance_tick()'; end if;
+  elsif p_stage = 'worth' then perform game.tick_worth();
+  elsif p_stage = 'hourly' then perform game.tick_hourly();
+  end if;
+  return true;
+exception when others then
+  insert into game.tick_errors (business_id, message) values (null, p_stage || coalesce(':' || p_arg, '') || ': ' || sqlerrm);
+  return false;
 end $$;
 
 -- (No SET clause: a procedure that sets its own search_path can't commit.
@@ -538,6 +571,7 @@ declare
   v_start timestamptz := clock_timestamp();
   v_ids bigint[];
   v_id bigint;
+  v_good text;
   v_n int := 0;
   v_err int := 0;
 begin
@@ -553,19 +587,19 @@ begin
     if game.tick_business_safe(v_id) then v_n := v_n + 1; else v_err := v_err + 1; end if;
     commit;
   end loop;
-  perform game.tick_property();
+  if not game.tick_stage_safe('property') then v_err := v_err + 1; end if;
   commit;
-  perform game.deliver_shipments();
+  if not game.tick_stage_safe('shipments') then v_err := v_err + 1; end if;
   commit;
-  perform game.markets_tick();
-  commit;
-  if to_regprocedure('game.finance_tick()') is not null then
-    execute 'select game.finance_tick()';
+  for v_good in select id from game.goods order by id loop
+    if not game.tick_stage_safe('market', v_good) then v_err := v_err + 1; end if;
     commit;
-  end if;
-  perform game.tick_worth();
+  end loop;
+  if not game.tick_stage_safe('finance') then v_err := v_err + 1; end if;
   commit;
-  perform game.tick_hourly();
+  if not game.tick_stage_safe('worth') then v_err := v_err + 1; end if;
+  commit;
+  if not game.tick_stage_safe('hourly') then v_err := v_err + 1; end if;
   insert into game.tick_log (started_at, finished_at, businesses, errors) values (v_start, clock_timestamp(), v_n, v_err);
   commit;
   perform pg_advisory_unlock(424242);

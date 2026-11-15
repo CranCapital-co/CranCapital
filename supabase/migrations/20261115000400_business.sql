@@ -50,6 +50,7 @@ create table game.businesses (
   attract numeric not null default 1,
   max_staff int not null default 0,
   carry numeric not null default 0,
+  fuel_carry numeric not null default 0,
   book_value bigint not null default 0,
   last_tick_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -67,6 +68,8 @@ create index businesses_city_idx on game.businesses (city_id, lat, lng) where st
 create index businesses_building_idx on game.businesses (building_id) where building_id is not null;
 
 -- Daily history per business, for charts.
+alter table game.players add column starter_given boolean not null default false;
+
 create table game.business_days (
   business_id bigint not null references game.businesses(id),
   day date not null,
@@ -98,6 +101,7 @@ create table game.plots (
   py int not null,
   owner_id uuid not null references game.players(id),
   bought_price bigint not null,
+  city_price bigint not null,
   bought_at timestamptz not null default now(),
   business_id bigint references game.businesses(id),
   for_sale_price bigint,
@@ -310,8 +314,10 @@ declare
 begin
   select cash into v from game.players where id = p_player;
   v := v + coalesce((select sum(book_value) from game.businesses where owner_id = p_player and status in ('open', 'closed', 'depleted')), 0);
-  v := v + coalesce((select sum(bought_price) from game.plots where owner_id = p_player), 0);
-  v := v + coalesce((select sum(bought_price) from game.buildings where owner_id = p_player), 0);
+  -- Property counts at the lower of the price paid and the city's value, so
+  -- selling land back and forth between friends can't inflate net worth.
+  v := v + coalesce((select sum(least(bought_price, city_price)) from game.plots where owner_id = p_player), 0);
+  v := v + coalesce((select sum(least(b.bought_price, game.building_value(b))) from game.buildings b where b.owner_id = p_player), 0);
   v := v + coalesce((select sum(round(s.qty * game.npc_bid(m.ref_price))) from game.storage s join game.markets m using (good_id)
                       where s.owner_id = p_player and s.qty > 0), 0);
   v := v + coalesce((select sum(case when o.side = 'buy' then o.escrow
@@ -403,6 +409,8 @@ declare
   v_first boolean;
 begin
   perform game.rate_limit(p.id::text, 'build', 10, 6);
+  -- Serialise this player's purchases (cart limit, starter stock).
+  select * into p from game.players where id = p.id for update;
   select * into t from game.business_types where id = 'cart';
   if (select count(*) from game.businesses where owner_id = p.id and kind = 'cart' and status in ('open', 'closed')) >= game.cfg('max_carts') then
     perform game.fail(format('You can run at most %s carts. Sell one or grow into shops.', game.cfg('max_carts')));
@@ -421,7 +429,7 @@ begin
                and game.dist_m(lat, lng, p_lat, p_lng) < game.cfg('cart_spacing_m')) then
     perform game.fail('Another cart is parked right here. Find your own spot.');
   end if;
-  v_first := not exists (select 1 from game.businesses where owner_id = p.id);
+  v_first := not p.starter_given;
   perform game.money(p.id, -t.cost, 'purchase', 'Bought a food cart', jsonb_build_object('kind', 'cart'));
   insert into game.businesses (owner_id, city_id, kind, name, lat, lng, traffic, book_value, settings, open_hour, close_hour)
   values (p.id, c.id, 'cart', game.clean_name(p_name, p.display_name || '''s Cart'), p_lat, p_lng,
@@ -434,6 +442,7 @@ begin
   returning id into v_id;
   perform game.recompute_business(v_id);
   if v_first then
+    update game.players set starter_given = true where id = p.id;
     -- Starter stock so the first sales arrive straight away.
     perform game.stock_add(p.id, c.id, 'lettuce', 600, false);
     perform game.stock_add(p.id, c.id, 'tomato', 400, false);
@@ -524,7 +533,7 @@ declare
   b game.businesses := game.my_business(p, p_id);
 begin
   if b.status = 'depleted' then perform game.fail('This deposit is used up.'); end if;
-  update game.businesses set status = case when p_open then 'open' else 'closed' end, last_tick_at = now() where id = b.id;
+  update game.businesses set status = case when p_open then 'open' else 'closed' end where id = b.id;
   return jsonb_build_object('status', case when p_open then 'open' else 'closed' end);
 end $$;
 
@@ -556,7 +565,7 @@ begin
       perform game.fail(format('%s only grows in warm cities like Singapore.', g.name));
     end if;
   elsif p_key = 'auto_sell' then
-    if t.produces not in ('crop', 'timber', 'recipe') and t.placement <> 'deposit' then
+    if coalesce(t.produces, '') not in ('crop', 'timber', 'recipe') and t.placement <> 'deposit' then
       perform game.fail('Only producers can auto-sell.');
     end if;
     if jsonb_typeof(p_value) <> 'boolean' then perform game.fail('Choose on or off.'); end if;
@@ -756,7 +765,7 @@ begin
   end if;
   v_price := game.plot_price(c, p_px, p_py);
   perform game.money(p.id, -v_price, 'purchase', 'Bought a plot of land', jsonb_build_object('city', c.id, 'px', p_px, 'py', p_py));
-  insert into game.plots (city_id, px, py, owner_id, bought_price) values (c.id, p_px, p_py, p.id, v_price);
+  insert into game.plots (city_id, px, py, owner_id, bought_price, city_price) values (c.id, p_px, p_py, p.id, v_price, v_price);
   perform game.award(p.id, 'first_plot');
   perform game.refresh_worth(p.id);
   return jsonb_build_object('price', v_price);
@@ -822,7 +831,7 @@ begin
   return jsonb_build_object('business_id', v_id);
 end $$;
 
-create function game.buy_building(p game.players, p_building bigint, p_lat float8, p_lng float8) returns jsonb
+create function game.buy_building(p game.players, p_building bigint, p_lat float8, p_lng float8, p_expected_price bigint default null) returns jsonb
 language plpgsql set search_path = game, pg_temp as $$
 declare
   bld game.buildings;
@@ -842,6 +851,9 @@ begin
     perform game.money(p.id, -v_price, 'purchase', format('Bought %s', coalesce(bld.name, 'a building')), jsonb_build_object('building', bld.id));
   else
     if bld.for_sale_price is null then perform game.fail('The owner isn''t selling this building.'); end if;
+    if p_expected_price is distinct from bld.for_sale_price then
+      perform game.fail(format('The asking price changed to %s. Check it and try again.', game.fmt(bld.for_sale_price)));
+    end if;
     v_price := bld.for_sale_price;
     v_seller := bld.owner_id;
     perform game.money(p.id, -v_price, 'property_buy', format('Bought %s from %s', coalesce(bld.custom_name, bld.name, 'a building'),
@@ -890,7 +902,7 @@ declare
 begin
   select * into bld from game.buildings where id = game.resolve_building(p_building) and owner_id = p.id for update;
   if not found then perform game.fail('You don''t own that building.'); end if;
-  v_back := round(bld.bought_price * 0.7);
+  v_back := round(least(bld.bought_price, game.building_value(bld)) * 0.7);
   perform game.money(p.id, v_back, 'sale_to_game', format('Sold %s to the city', coalesce(bld.custom_name, bld.name, 'a building')),
     jsonb_build_object('building', bld.id));
   update game.buildings set owner_id = null, bought_price = null, bought_at = null, for_sale_price = null, rent_pct = 100, custom_name = null
@@ -910,7 +922,7 @@ begin
 end $$;
 
 -- Buy a plot another player listed for sale (with whatever stands on it).
-create function game.buy_listed_plot(p game.players, p_city text, p_px int, p_py int) returns jsonb
+create function game.buy_listed_plot(p game.players, p_city text, p_px int, p_py int, p_expected_price bigint default null) returns jsonb
 language plpgsql set search_path = game, pg_temp as $$
 declare
   pl game.plots;
@@ -919,6 +931,9 @@ begin
   select * into pl from game.plots where city_id = p_city and px = p_px and py = p_py for update;
   if not found or pl.for_sale_price is null then perform game.fail('That plot isn''t for sale.'); end if;
   if pl.owner_id = p.id then perform game.fail('That''s already yours.'); end if;
+  if p_expected_price is distinct from pl.for_sale_price then
+    perform game.fail(format('The asking price changed to %s. Check it and try again.', game.fmt(pl.for_sale_price)));
+  end if;
   perform game.money(p.id, -pl.for_sale_price, 'property_buy', 'Bought a plot', jsonb_build_object('city', p_city, 'px', p_px, 'py', p_py));
   perform game.money(pl.owner_id, pl.for_sale_price, 'property_sale', format('Sold a plot to %s', p.display_name),
     jsonb_build_object('city', p_city, 'px', p_px, 'py', p_py));
@@ -944,7 +959,7 @@ begin
   if pl.business_id is not null and exists (select 1 from game.businesses where id = pl.business_id and status in ('open', 'closed', 'depleted')) then
     perform game.fail('Sell what''s built on it first.');
   end if;
-  v_back := round(pl.bought_price * 0.7);
+  v_back := round(least(pl.bought_price, pl.city_price) * 0.7);
   perform game.money(p.id, v_back, 'sale_to_game', 'Sold a plot to the city', jsonb_build_object('city', p_city, 'px', p_px, 'py', p_py));
   delete from game.plots where city_id = p_city and px = p_px and py = p_py;
   perform game.refresh_worth(p.id);
