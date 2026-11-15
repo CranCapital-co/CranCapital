@@ -1,0 +1,55 @@
+{
+ "id": "singapore",
+ "name": "Singapore",
+ "country": "Singapore",
+ "tz": "Asia/Singapore",
+ "climate": "warm",
+ "bbox": [
+  103.832,
+  1.268,
+  103.872,
+  1.308
+ ],
+ "start": {
+  "lng": 103.8515,
+  "lat": 1.2839,
+  "label": "Raffles Place"
+ },
+ "travelHub": {
+  "lng": 103.8545,
+  "lat": 1.2931,
+  "label": "City Hall"
+ },
+ "origin": [
+  103.832,
+  1.268
+ ],
+ "kx": 111291.8737796938,
+ "ky": 110574,
+ "widthM": 4451.674951188447,
+ "heightM": 4422.960000000004,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 891,
+   "h": 885
+  },
+  "plot": {
+   "cell": 25,
+   "w": 179,
+   "h": 177
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 90,
+   "h": 89,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 678,
+  "plots": 5138,
+  "coast": 541,
+  "pois": 8656
+ }
+}

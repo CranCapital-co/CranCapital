@@ -1,0 +1,12 @@
+{
+  "name": "@crancapital/tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "citydata": "NODE_USE_ENV_PROXY=1 node citydata/build.mjs"
+  },
+  "dependencies": {
+    "@mapbox/vector-tile": "^2.0.3",
+    "pbf": "^4.0.1"
+  }
+}

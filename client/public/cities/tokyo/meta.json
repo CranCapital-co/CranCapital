@@ -1,0 +1,55 @@
+{
+ "id": "tokyo",
+ "name": "Tokyo",
+ "country": "Japan",
+ "tz": "Asia/Tokyo",
+ "climate": "temperate",
+ "bbox": [
+  139.735,
+  35.656,
+  139.788,
+  35.699
+ ],
+ "start": {
+  "lng": 139.7671,
+  "lat": 35.6812,
+  "label": "Tokyo Station"
+ },
+ "travelHub": {
+  "lng": 139.7671,
+  "lat": 35.6812,
+  "label": "Tokyo Station"
+ },
+ "origin": [
+  139.735,
+  35.656
+ ],
+ "kx": 90426.6408992552,
+ "ky": 110574,
+ "widthM": 4792.611967660279,
+ "heightM": 4754.681999999918,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 959,
+   "h": 951
+  },
+  "plot": {
+   "cell": 25,
+   "w": 192,
+   "h": 191
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 96,
+   "h": 96,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 648,
+  "plots": 1428,
+  "coast": 224,
+  "pois": 15706
+ }
+}

@@ -1,0 +1,55 @@
+{
+ "id": "new-york",
+ "name": "New York",
+ "country": "United States",
+ "tz": "America/New_York",
+ "climate": "temperate",
+ "bbox": [
+  -74.019,
+  40.702,
+  -73.96,
+  40.77
+ ],
+ "start": {
+  "lng": -73.9855,
+  "lat": 40.758,
+  "label": "Times Square"
+ },
+ "travelHub": {
+  "lng": -73.9772,
+  "lat": 40.7527,
+  "label": "Grand Central"
+ },
+ "origin": [
+  -74.019,
+  40.702
+ ],
+ "kx": 84349.88700563536,
+ "ky": 110574,
+ "widthM": 4976.643333333474,
+ "heightM": 7519.032000000547,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 996,
+   "h": 1504
+  },
+  "plot": {
+   "cell": 25,
+   "w": 200,
+   "h": 301
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 100,
+   "h": 151,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 3927,
+  "plots": 1082,
+  "coast": 249,
+  "pois": 29466
+ }
+}
