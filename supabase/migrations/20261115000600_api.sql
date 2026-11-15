@@ -105,8 +105,8 @@ begin
     v_code := upper(substr(encode(extensions.gen_random_bytes(6), 'hex'), 1, 8));
     exit when not exists (select 1 from game.players where referral_code = v_code);
   end loop;
-  insert into game.players (id, display_name, age_ok, referral_code, referred_by, last_day, days_played)
-  values (v_uid, v_name, true, v_code, v_ref, (now() at time zone 'utc')::date, 1)
+  insert into game.players (id, display_name, age_ok, referral_code, referred_by, last_day, days_played, loyalty_points)
+  values (v_uid, v_name, true, v_code, v_ref, (now() at time zone 'utc')::date, 1, game.cfg('loyalty_per_day')::int)
   returning * into p;
   perform game.money(p.id, game.cfg('start_cash')::bigint, 'start_grant', 'Welcome to CranCapital');
   if p.created_at < coalesce((select min(created_at) from game.players), now()) + interval '30 days' then

@@ -1000,7 +1000,7 @@ declare
   k text;
 begin
   for k in select jsonb_object_keys(p_prefs) loop
-    if k in ('notify_launch', 'notify_digest', 'notify_events', 'analytics', 'show_crowds', 'reduce_motion', 'sound', 'units') then
+    if k in ('notify_launch', 'notify_digest', 'notify_events', 'analytics', 'hide_crowds', 'reduce_motion', 'sound', 'units') then
       v := v || jsonb_build_object(k, p_prefs -> k);
     end if;
   end loop;
