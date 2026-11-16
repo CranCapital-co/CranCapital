@@ -1,1 +1,87 @@
 # CranCapital
+
+A browser business-tycoon game on a real-world map that every player shares.
+Start with one food cart on a real street in London, New York, Tokyo,
+Singapore or Paris, and grow it into shops, land, mines, factories, ports and a bank.
+Businesses keep earning while you're offline (for up to 24 hours).
+
+CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permission.
+
+- Play: https://harryxgreenhalgh-prog.github.io/CranCapital/
+- Tutorial Island (no account): https://harryxgreenhalgh-prog.github.io/CranCapital/#/tutorial
+
+## How it fits together
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| Game client | `client/` (Vite, React, TypeScript, MapLibre) | Static site on GitHub Pages. Map, windows, Tutorial Island. Only ever *asks* the server. |
+| Game server | `supabase/migrations/` (Postgres on Supabase) | Owns all money, goods and property. Every action is a database function that checks the rules and writes the money ledger. |
+| Economy tick | `game.tick()` via pg_cron, every minute | Sales, production, rent, wages, loans, market traders, offline cap. |
+| Live updates | Supabase Realtime | Other players walking (presence), notifications, chat. |
+| City data | `tools/citydata/` → `supabase/seed/cities/`, `client/public/cities/` | Buildings, foot traffic, buildable plots and port sites, built from OpenStreetMap via OpenFreeMap tiles. |
+| Map tiles | OpenFreeMap (free, no key) | Real streets and 3D buildings. |
+
+Rules the server keeps: the client only asks; every change to a player's cash
+goes through `game.money()` and lands in `game.ledger`; players can't reach
+any table directly (schema `game` isn't exposed and has row-level security);
+actions are rate limited; nobody can teleport.
+
+## Repository map
+
+```
+client/                 the game website
+  src/screens/          landing, play, world, tutorial, wiki/legal pages
+  src/ui/panels/        one file per game window
+  src/map/              map style, crowds, icons
+  src/content/          wiki and legal pages (Markdown)
+supabase/migrations/    the whole game server, in order
+supabase/seed/          city data, word filter, world settings
+tools/citydata/         rebuild city data from map tiles
+tools/local-supabase/   a local Supabase-compatible stack for testing (Linux)
+tools/deploy/           push the database to the hosted Supabase project
+tests/db/               end-to-end tests through the real API
+docs/                   setup guide and build plan
+```
+
+## Run it locally (Linux)
+
+Needs Node 22, Docker, `postgresql-16` and `postgresql-16-cron`.
+
+```bash
+npm install
+```
+
+```bash
+tools/local-supabase/start.sh
+```
+
+```bash
+tools/db/apply-local.sh
+```
+
+```bash
+npm run dev
+```
+
+Open http://localhost:5173. Local sign-in skips email (any address works).
+
+Run the tests (needs the local stack running):
+
+```bash
+npm run test:db
+```
+
+## Deploy
+
+See [docs/SETUP.md](docs/SETUP.md). In short: `node tools/deploy/supabase.mjs`
+updates the database, and pushing to `main` publishes the site.
+
+## Licences and credits
+
+- Map data © OpenStreetMap contributors, available under the Open Database
+  License (ODbL 1.0). The derived city data in `supabase/seed/cities/` and
+  `client/public/cities/` is also available under the ODbL.
+- Map tiles by OpenFreeMap, using the OpenMapTiles schema.
+- Open-source libraries: MapLibre GL JS (BSD-3-Clause), React, Supabase JS,
+  Zustand, Marked and Vite (MIT). Fonts: Fraunces and Inter (SIL OFL 1.1).
+- Full credits are in the game at `#/legal/credits`.

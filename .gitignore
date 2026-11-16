@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.local
+client/.env.local
+tools/citydata/.cache/
+tests/e2e/screens/
+test-results/
+playwright-report/

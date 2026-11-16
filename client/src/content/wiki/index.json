@@ -1,0 +1,18 @@
+[
+  { "slug": "getting-started", "title": "Getting started", "summary": "Pick a city, buy a food cart and make your first sales." },
+  { "slug": "food-carts", "title": "Food carts", "summary": "Where to park, what to sell and how cart upgrades work." },
+  { "slug": "pricing-and-customers", "title": "Pricing and customers", "summary": "Foot traffic, busy hours, fair prices and competition." },
+  { "slug": "storage-and-restocking", "title": "Storage and restocking", "summary": "How storage works in each city and how to keep it stocked." },
+  { "slug": "the-exchange", "title": "The exchange", "summary": "The global order book, market traders, price moves and the 1% fee." },
+  { "slug": "shops-and-restaurants", "title": "Shops and restaurants", "summary": "Rent a room, fit it out, hire staff and set opening hours." },
+  { "slug": "land-and-buildings", "title": "Land, farms and buildings", "summary": "Buy plots, grow crops, build apartments and become a landlord." },
+  { "slug": "mining-and-surveys", "title": "Mining and surveys", "summary": "Survey for hidden deposits and dig raw materials." },
+  { "slug": "industry-and-recipes", "title": "Industry and recipes", "summary": "Every factory recipe, its costs and the supply chains behind it." },
+  { "slug": "ports-and-exports", "title": "Ports and exports", "summary": "Ship goods between your cities or sell them to overseas buyers." },
+  { "slug": "finance", "title": "Finance", "summary": "Banks, loans and shares at a glance." },
+  { "slug": "travel-and-cities", "title": "Travel and cities", "summary": "The four cities, local time, taxis and flights." },
+  { "slug": "offline-earnings", "title": "Offline earnings", "summary": "What your businesses do while you are away, and the 24-hour limit." },
+  { "slug": "tiers-and-net-worth", "title": "Tiers and net worth", "summary": "The six tiers, what counts as net worth and every business type." },
+  { "slug": "community-and-rules", "title": "Community and rules", "summary": "Chat, boards, the Discord directory and how moderation works." },
+  { "slug": "badges-and-cosmetics", "title": "Badges and cosmetics", "summary": "Badges, the net-worth ring, loyalty points and the referral race." }
+]

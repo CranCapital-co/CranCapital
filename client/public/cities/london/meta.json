@@ -1,0 +1,55 @@
+{
+ "id": "london",
+ "name": "London",
+ "country": "United Kingdom",
+ "tz": "Europe/London",
+ "climate": "temperate",
+ "bbox": [
+  -0.165,
+  51.493,
+  -0.07,
+  51.528
+ ],
+ "start": {
+  "lng": -0.1281,
+  "lat": 51.508,
+  "label": "Trafalgar Square"
+ },
+ "travelHub": {
+  "lng": -0.1235,
+  "lat": 51.5308,
+  "label": "King’s Cross"
+ },
+ "origin": [
+  -0.165,
+  51.493
+ ],
+ "kx": 69282.3626240554,
+ "ky": 110574,
+ "widthM": 6581.824449285263,
+ "heightM": 3870.0899999996227,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 1317,
+   "h": 775
+  },
+  "plot": {
+   "cell": 25,
+   "w": 264,
+   "h": 155
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 132,
+   "h": 78,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 1770,
+  "plots": 1211,
+  "coast": 56,
+  "pois": 28989
+ }
+}
