@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import Landing from './screens/Landing';
 import { LegalPage, WikiPage, ReportPage } from './screens/Pages';
 import { Toasts } from './ui/components';
+import { supabase, AUTH_RETURN } from './lib/supabase';
 
 const Play = lazy(() => import('./screens/Play'));
 const Tutorial = lazy(() => import('./screens/Tutorial'));
@@ -23,9 +24,6 @@ export function go(path: string) {
 export default function App() {
   const hash = useHash();
   useEffect(() => {
-    // Back from a sign-in link (?code=...): go straight to the game.
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('code') && !window.location.hash.startsWith('#/play')) window.location.hash = '/play';
     // Invite links: #/r/CODE remembers the inviter.
     const m = window.location.hash.match(/^#\/r\/([A-Za-z0-9]{4,12})/);
     if (m) {
@@ -38,9 +36,20 @@ export default function App() {
     }
   }, [hash]);
 
+  // Back from a sign-in link: wait for the session, then go to the game.
+  const [authLanding, setAuthLanding] = useState(AUTH_RETURN);
+  useEffect(() => {
+    if (!AUTH_RETURN) return;
+    supabase.auth.getSession().finally(() => {
+      window.location.hash = '/play';
+      setAuthLanding(false);
+    });
+  }, []);
+
   const path = hash.replace(/^#/, '') || '/';
   let page;
-  if (path.startsWith('/play')) page = <Play />;
+  if (authLanding) page = <div className="boot"><div className="spinner" /></div>;
+  else if (path.startsWith('/play')) page = <Play />;
   else if (path.startsWith('/tutorial')) page = <Tutorial />;
   else if (path.startsWith('/legal/')) page = <LegalPage slug={path.slice(7)} />;
   else if (path.startsWith('/wiki')) page = <WikiPage slug={path.slice(6) || null} />;

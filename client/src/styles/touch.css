@@ -1,0 +1,93 @@
+/* iPad first: the game is played with fingers. Everything here applies to
+   touch screens (iPad, iPhone, touch laptops) and leaves mouse layouts alone. */
+
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+/* The game screen is an app, not a page: no pinch-zooming the controls, no
+   text-selection bubbles when you press and hold. Reading text stays selectable. */
+.game { touch-action: pan-x pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.game input, .game textarea, .game .msg .body, .game .md, .game code, .game blockquote { -webkit-user-select: text; user-select: text; }
+.window-body, .chat-log, .goods-list { -webkit-overflow-scrolling: touch; }
+
+/* Keep the OpenStreetMap credit clear of the dock. */
+@media (max-width: 1300px), (pointer: coarse) {
+  .game .maplibregl-ctrl-bottom-left { bottom: calc(env(safe-area-inset-bottom) + 100px); }
+  .game .maplibregl-ctrl-attrib { max-width: calc(100vw - 90px); font-size: 10px; }
+}
+
+@media (pointer: coarse) {
+  body { font-size: 16px; }
+
+  /* Finger-sized targets (Apple suggests at least 44 points). */
+  .btn { min-height: 46px; padding: 0 18px; }
+  .btn.small { min-height: 42px; padding: 0 15px; font-size: 14px; }
+  .btn.tiny { min-height: 38px; padding: 0 13px; font-size: 13px; }
+  .btn.icon { width: 46px; }
+  .btn.icon.small { width: 44px; min-height: 44px; }
+  .tabs button { padding: 11px 16px; font-size: 14px; }
+  .link { padding: 8px 2px; margin: -4px 0; }
+  .chip { padding: 4px 11px; font-size: 13px; }
+  button.chip { min-height: 38px; padding: 0 14px; }
+
+  /* 16px inputs: Safari doesn't zoom in when you tap them. */
+  .input, select.input, textarea.input, .chat-input input { min-height: 46px; font-size: 16px; }
+  input[type='range'] { height: 36px; }
+  input[type='file'] { font-size: 16px; padding: 8px 0; }
+  label.check input { width: 24px; height: 24px; }
+  .dollar .input { width: 120px; }
+  .menu-row .dollar .input { width: 96px; }
+
+  table.list td { padding: 12px 6px; }
+  .goods-list button { padding: 12px 8px; }
+  .chan-list button { padding: 9px 15px; font-size: 14px; }
+  .palette button { padding: 10px 9px; font-size: 13px; }
+  .fitgrid { gap: 5px; }
+  details summary { padding: 10px 0; }
+
+  /* HUD, dock and map buttons */
+  .hud-pill { min-height: 52px; padding: 6px 14px 6px 8px; }
+  .hud-cash { font-size: 19px; }
+  .hud-sub { font-size: 12px; }
+  .hud-city { font-size: 15px; }
+  .bell { width: 52px; height: 52px; font-size: 22px; }
+  .dock { gap: 6px; padding: 7px; border-radius: 24px; }
+  .dock button { min-width: 72px; padding: 9px 8px 7px; font-size: 12px; border-radius: 16px; }
+  .dock button span:first-child { font-size: 27px; }
+  .fabs { gap: 10px; bottom: calc(env(safe-area-inset-bottom) + 112px); }
+  .fab { width: 54px; height: 54px; font-size: 24px; }
+  .game .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+  .game .maplibregl-ctrl-top-right { top: calc(env(safe-area-inset-top) + 74px); }
+  .mode-banner { top: calc(env(safe-area-inset-top) + 76px); font-size: 15px; padding: 9px 9px 9px 18px; }
+  .travel-banner { top: calc(env(safe-area-inset-top) + 130px); }
+  .toasts { top: calc(env(safe-area-inset-top) + 76px); }
+  .toast { font-size: 15px; padding: 12px 16px; }
+
+  .window-head h2 { font-size: 21px; }
+  .window-head { padding: 12px 12px 10px 18px; }
+  .window-body { padding: 16px 18px 20px; }
+  .coach { font-size: 16px; }
+}
+
+/* iPad and other tablets: side panel beside the map, clear of the bigger dock. */
+@media (pointer: coarse) and (min-width: 721px) {
+  .window { top: calc(env(safe-area-inset-top) + 74px); bottom: calc(env(safe-area-inset-bottom) + 104px); width: min(470px, calc(100% - 20px)); }
+  .window.wide { width: min(800px, calc(100% - 20px)); }
+}
+/* iPad in portrait: a wide window would cover the whole map, so cap it. */
+@media (pointer: coarse) and (min-width: 721px) and (max-width: 900px) {
+  .window.wide { width: min(620px, calc(100% - 20px)); }
+  .market { grid-template-columns: 1fr; }
+  .market .goods-list { max-height: 26vh; }
+}
+@media (pointer: coarse) and (max-width: 720px) {
+  .dock button { min-width: 60px; }
+  .window, .window.wide { max-height: 84dvh; }
+}
+
+/* Landing page under the status bar when opened from the Home Screen. */
+.land-nav { padding-top: calc(env(safe-area-inset-top) + 16px); }
+
+@media (pointer: coarse) {
+  .hud-pill > button { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+}

@@ -6,7 +6,7 @@ import { installIconFactory } from './icons';
 import { Crowd, crowdLevel, nightAlpha } from './crowd';
 import { useGame, catalog } from '../lib/store';
 import { rpc } from '../lib/supabase';
-import { loadWalk, walkable, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, inCity, type CityData } from '../lib/citydata';
+import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, inCity, type CityData } from '../lib/citydata';
 import { onPresence, track, type Presence } from '../lib/realtime';
 import { localHour, money, ringFor } from '../lib/format';
 
@@ -65,7 +65,11 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       ],
       attributionControl: false,
       dragRotate: true,
+      doubleClickZoom: false, // a tap walks; pinch or use the buttons to zoom
     });
+    // Touch screens (iPad first): fingers are less precise than a mouse.
+    const touch = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const canHover = window.matchMedia?.('(hover: hover)').matches ?? !touch;
     mapRef.current = map;
     map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-left');
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -259,9 +263,21 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       const land = mode.kind === 'land';
       for (const id of ['plots-fill', 'plots-line', 'deposits']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', land ? 'visible' : 'none');
       if (land) refreshPlots();
-      if (mode.kind === 'place-cart' || mode.kind === 'move-cart') await loadWalk(city);
+      const placing = mode.kind === 'place-cart' || mode.kind === 'move-cart';
+      if (placing) {
+        await loadWalk(city);
+        // Paint the streets where a cart may park in green.
+        if (!map.getSource('walk')) {
+          const img = walkImage(city);
+          if (img) {
+            map.addSource('walk', { type: 'image', url: img.url, coordinates: img.coords });
+            map.addLayer({ id: 'walk', type: 'raster', source: 'walk', paint: { 'raster-opacity': 0.55, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } }, 'building-flat');
+          }
+        }
+      }
+      if (map.getLayer('walk')) map.setLayoutProperty('walk', 'visibility', placing ? 'visible' : 'none');
       map.getCanvas().style.cursor = mode.kind === 'walk' ? '' : 'crosshair';
-      if (ghostEl.current) ghostEl.current.style.display = mode.kind === 'place-cart' || mode.kind === 'move-cart' ? 'block' : 'none';
+      if (ghostEl.current) ghostEl.current.style.display = placing && canHover ? 'block' : 'none';
     };
 
     map.on('mousemove', (e) => {
@@ -284,11 +300,13 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       }
       if (mode.kind === 'place-cart' || mode.kind === 'move-cart') {
         await loadWalk(city);
-        if (!walkable(city, lat, lng)) {
-          st.toast('Carts park on streets and paths: pick a spot on the road.', 'error');
+        // Snap a near miss onto the street (fingers aren't pixel-precise).
+        const spot = nearestWalkable(city, lat, lng, touch ? 18 : 7);
+        if (!spot) {
+          st.toast('Carts park on the green streets and paths: tap a green spot.', 'error');
           return;
         }
-        cbs.current.onPlace?.(lat, lng);
+        cbs.current.onPlace?.(spot.lat, spot.lng);
         return;
       }
       if (mode.kind === 'taxi') {
@@ -306,17 +324,32 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         return;
       }
       // Walk mode: avatars, businesses, buildings, or walk.
-      const hits = map.queryRenderedFeatures(e.point, { layers: ['players', 'businesses', 'building-3d', 'building-flat'].filter((l) => map.getLayer(l)) });
-      const player = hits.find((h) => h.layer.id === 'players');
-      if (player) {
-        st.open('profile', { player_no: player.properties.no });
+      // Icons get a generous hit area; the nearest one to the tap wins.
+      const pad = touch ? 22 : 8;
+      const near = map.queryRenderedFeatures(
+        [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
+        { layers: ['players', 'businesses'].filter((l) => map.getLayer(l)) }
+      );
+      let pick: (typeof near)[number] | null = null;
+      let pickD = Infinity;
+      for (const f of near) {
+        const c = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+        const p = map.project(c);
+        const dd = Math.hypot(p.x - e.point.x, p.y - 14 - e.point.y); // icons sit above their point
+        if (dd < pickD) {
+          pickD = dd;
+          pick = f;
+        }
+      }
+      if (pick?.layer.id === 'players') {
+        st.open('profile', { player_no: pick.properties.no });
         return;
       }
-      const biz = hits.find((h) => h.layer.id === 'businesses');
-      if (biz) {
-        st.open('business', { id: biz.properties.id });
+      if (pick?.layer.id === 'businesses') {
+        st.open('business', { id: pick.properties.id });
         return;
       }
+      const hits = map.queryRenderedFeatures(e.point, { layers: ['building-3d', 'building-flat'].filter((l) => map.getLayer(l)) });
       const bld = hits.find((h) => h.layer.id.startsWith('building') && h.id !== undefined);
       if (bld) {
         useGame.setState({ selection: { building: Number(bld.id) } });

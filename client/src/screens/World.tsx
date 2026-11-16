@@ -203,8 +203,8 @@ export default function World() {
 
       {mode.kind !== 'walk' && (
         <div className="mode-banner" role="status">
-          {mode.kind === 'place-cart' && 'Tap a street to park your new cart. Green means you can park there.'}
-          {mode.kind === 'move-cart' && 'Tap a street to move your cart there.'}
+          {mode.kind === 'place-cart' && 'Tap a green street to park your new cart.'}
+          {mode.kind === 'move-cart' && 'Tap a green street to move your cart there.'}
           {mode.kind === 'taxi' && 'Tap anywhere in the city to take a taxi there.'}
           {mode.kind === 'land' && 'Land mode: tap a green plot to see it. Gold plots are yours.'}
           <button className="btn small" onClick={() => { set({ mode: { kind: 'walk' } }); setPending(null); }}>Done</button>
