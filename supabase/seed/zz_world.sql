@@ -16,6 +16,7 @@ select c.id, g.id,
     when c.id = 'london' and g.id in ('coffee', 'banana', 'furniture') then 1.7
     when c.id = 'london' and g.category = 'material' then 1.3
     when c.id = 'singapore' and g.category = 'material' then 1.3
+    when c.id = 'paris' and g.id in ('flour', 'wheat', 'pumpkin') then 1.35
     else 1.2
   end
 from game.cities c cross join game.goods g

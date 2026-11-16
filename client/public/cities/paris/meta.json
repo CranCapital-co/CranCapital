@@ -1,0 +1,55 @@
+{
+ "id": "paris",
+ "name": "Paris",
+ "country": "France",
+ "tz": "Europe/Paris",
+ "climate": "temperate",
+ "bbox": [
+  2.315,
+  48.848,
+  2.37,
+  48.874
+ ],
+ "start": {
+  "lng": 2.3358,
+  "lat": 48.8611,
+  "label": "Louvre"
+ },
+ "travelHub": {
+  "lng": 2.347,
+  "lat": 48.862,
+  "label": "Châtelet–Les Halles"
+ },
+ "origin": [
+  2.315,
+  48.848
+ ],
+ "kx": 73236.0952542879,
+ "ky": 110574,
+ "widthM": 4027.985238985846,
+ "heightM": 2874.924000000371,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 806,
+   "h": 575
+  },
+  "plot": {
+   "cell": 25,
+   "w": 162,
+   "h": 115
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 81,
+   "h": 58,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 298,
+  "plots": 242,
+  "coast": 7,
+  "pois": 24186
+ }
+}

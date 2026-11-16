@@ -1,8 +1,8 @@
 # CranCapital
 
 A browser business-tycoon game on a real-world map that every player shares.
-Start with one food cart on a real street in London, New York, Tokyo or
-Singapore, and grow it into shops, land, mines, factories, ports and a bank.
+Start with one food cart on a real street in London, New York, Tokyo,
+Singapore or Paris, and grow it into shops, land, mines, factories, ports and a bank.
 Businesses keep earning while you're offline (for up to 24 hours).
 
 CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permission.

@@ -5,7 +5,7 @@ needs an owner action, ⬜ not started.
 
 ## Phase 1 · The map (front end)
 
-- ✅ Real-world map of London, New York, Tokyo, Singapore; OSM credit always on screen
+- ✅ Real-world map of London, New York, Tokyo, Singapore and Paris; OSM credit always on screen
 - ✅ Landing page with live stats and ticker; every window built (not mock-ups)
 - ✅ Tutorial Island (works with no account and no server)
 - ✅ Gate: map loads quickly on a phone (map engine loads only on the play screen; city data under 250 KB per city)
@@ -36,4 +36,4 @@ needs an owner action, ⬜ not started.
 - ✅ Finance tier: city and player banks, loans, IPOs, shares, dividends; world events
 - ✅ Legal pages, credits, wiki
 - 🟡 Fill legal placeholders, written permission from NIKS GAMES LLC, Pages switched on, PR merged
-- ⬜ More cities (run tools/citydata with a new entry in cities.mjs, then deploy with --seed)
+- ✅ Fifth city (Paris) added after launch prep; more cities: add an entry to tools/citydata/cities.mjs, run it, add a migration for prices and wages, deploy with --seed

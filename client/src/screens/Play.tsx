@@ -190,6 +190,7 @@ function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: stri
     'new-york': 'Start in Times Square. Huge crowds in Midtown and the highest prices and wages.',
     tokyo: 'Start at Tokyo Station. Dense streets, big appetite for raw materials.',
     singapore: 'Start at Raffles Place. The only warm city: bananas and coffee grow here.',
+    paris: 'Start at the Louvre. Tourists all day, and the Seine for ports. Bakers pay well for flour.',
   };
   return (
     <div className="center-screen">

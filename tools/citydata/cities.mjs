@@ -49,6 +49,17 @@ export const CITIES = [
     start: { lng: 103.8515, lat: 1.2839, label: 'Raffles Place' },
     travelHub: { lng: 103.8545, lat: 1.2931, label: 'City Hall' },
   },
+  {
+    id: 'paris',
+    name: 'Paris',
+    country: 'France',
+    tz: 'Europe/Paris',
+    climate: 'temperate',
+    currency: 'EUR',
+    bbox: [2.3150, 48.8480, 2.3700, 48.8740],
+    start: { lng: 2.3358, lat: 48.8611, label: 'Louvre' },
+    travelHub: { lng: 2.3470, lat: 48.8620, label: 'Châtelet–Les Halles' },
+  },
 ];
 
 // Grid resolutions in metres.
