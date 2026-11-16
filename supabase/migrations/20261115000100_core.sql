@@ -40,7 +40,7 @@ insert into game.config (key, value, note) values
   ('tier6_net_worth', 15000000000, 'Net worth to unlock finance ($15M)'),
   ('property_tax_pct_day', 0.05, 'Property tax per day, % of land and building value'),
   ('npc_spread_pct', 20, 'Gap between NPC traders'' buy and sell prices, %'),
-  ('npc_reversion_per_tick', 0.004, 'How fast NPC reference prices return to base each minute'),
+  ('npc_reversion_per_tick', 0.006, 'How fast NPC reference prices return to base each minute'),
   ('global_chat_enabled', 1, '1 = global chat channel open to everyone'),
   ('chat_rate_per_min', 12, 'Chat messages per minute per player'),
   ('survey_cost', 20000000, 'Cost of a mineral survey ($20,000)'),
