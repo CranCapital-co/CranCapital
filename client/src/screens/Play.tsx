@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY } from '../lib/supabase';
+import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY, AUTH_ERROR } from '../lib/supabase';
 import { useGame } from '../lib/store';
 import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/realtime';
 import { localTime } from '../lib/format';
@@ -20,8 +20,12 @@ function SignIn() {
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(
+    AUTH_ERROR ? 'That sign-in link has expired or was already used. Enter your email to get a new one.' : null
+  );
   const [google, setGoogle] = useState(false);
+  // Opened from the iPad or iPhone home screen: emailed links open in Safari instead.
+  const homeScreenApp = (navigator as any).standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
   useEffect(() => {
     fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_KEY } })
       .then((r) => r.json())
@@ -84,7 +88,12 @@ function SignIn() {
           </form>
         ) : (
           <form className="stack" onSubmit={verify}>
-            <div className="notice green">We sent an email to <b>{email}</b>. Click the link in it, or type the 6-digit code here.</div>
+            <div className="notice green">We sent an email to <b>{email}</b>. Tap the link in it, or type the 6-digit code here if the email shows one.</div>
+            {homeScreenApp && (
+              <div className="notice small">
+                You’re using the home-screen app, and email links open in Safari. Type the code here to sign in. If your email has no code, open CranCapital in Safari and sign in there.
+              </div>
+            )}
             <label className="field">
               <span>Code from the email</span>
               <input className="input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />

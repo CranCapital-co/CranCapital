@@ -156,3 +156,59 @@ export function trafficImage(d: CityData): { url: string; coords: [[number, numb
   const n = m.origin[1] + (g.h * g.cell) / m.ky;
   return { url: c.toDataURL(), coords: [[w, n], [e, n], [e, s], [w, s]] };
 }
+
+// Green overlay of where carts may park (one pixel per 5 m cell). Needs loadWalk first.
+export function walkImage(d: CityData): { url: string; coords: [[number, number], [number, number], [number, number], [number, number]] } | null {
+  if (!d.walk) return null;
+  const g = d.meta.grids.walk;
+  const c = document.createElement('canvas');
+  c.width = g.w;
+  c.height = g.h;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(g.w, g.h);
+  for (let y = 0; y < g.h; y++)
+    for (let x = 0; x < g.w; x++) {
+      const i = y * g.w + x;
+      if (((d.walk[i >> 3] >> (i & 7)) & 1) === 0) continue;
+      const o = ((g.h - 1 - y) * g.w + x) * 4; // north up
+      img.data[o] = 38;
+      img.data[o + 1] = 166;
+      img.data[o + 2] = 106;
+      img.data[o + 3] = 150;
+    }
+  ctx.putImageData(img, 0, 0);
+  const m = d.meta;
+  const w = m.origin[0];
+  const s = m.origin[1];
+  const e = m.origin[0] + (g.w * g.cell) / m.kx;
+  const n = m.origin[1] + (g.h * g.cell) / m.ky;
+  return { url: c.toDataURL(), coords: [[w, n], [e, n], [e, s], [w, s]] };
+}
+
+// The nearest spot a cart may park within maxM metres of a tap (fingers
+// aren't precise), or null. Needs loadWalk first.
+export function nearestWalkable(d: CityData, lat: number, lng: number, maxM: number): { lat: number; lng: number } | null {
+  if (!d.walk) return null;
+  if (walkable(d, lat, lng)) return { lat, lng };
+  const g = d.meta.grids.walk;
+  const { x, y } = toXY(d.meta, lat, lng);
+  const cx0 = Math.floor(x / g.cell);
+  const cy0 = Math.floor(y / g.cell);
+  const r = Math.ceil(maxM / g.cell);
+  let best: { lat: number; lng: number } | null = null;
+  let bestD = maxM * maxM;
+  for (let cy = cy0 - r; cy <= cy0 + r; cy++)
+    for (let cx = cx0 - r; cx <= cx0 + r; cx++) {
+      if (cx < 0 || cy < 0 || cx >= g.w || cy >= g.h) continue;
+      const i = cy * g.w + cx;
+      if (((d.walk[i >> 3] >> (i & 7)) & 1) === 0) continue;
+      const px = (cx + 0.5) * g.cell;
+      const py = (cy + 0.5) * g.cell;
+      const dd = (px - x) * (px - x) + (py - y) * (py - y);
+      if (dd <= bestD) {
+        bestD = dd;
+        best = { lat: d.meta.origin[1] + py / d.meta.ky, lng: d.meta.origin[0] + px / d.meta.kx };
+      }
+    }
+  return best;
+}

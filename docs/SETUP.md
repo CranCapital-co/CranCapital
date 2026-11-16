@@ -9,6 +9,10 @@ steps left for a person to do, then the routine for updates.
 1. **Turn on GitHub Pages.** Repo Settings → Pages → Source: **GitHub Actions**.
    Merging to `main` then publishes the site to
    https://harryxgreenhalgh-prog.github.io/CranCapital/.
+   Until this is on, the "Deploy site" workflow builds fine but its last step
+   fails with "Ensure GitHub Pages has been enabled". After switching it on,
+   open the failed run in the Actions tab and press **Re-run failed jobs**
+   (or merge any new change).
 2. **Sign in first.** The first player in a fresh world becomes an admin
    (staff tools appear in the dock as 🛡️ Staff). To make someone else staff
    later, run in the Supabase SQL editor:
@@ -28,6 +32,17 @@ steps left for a person to do, then the routine for updates.
    pages (they were drafted for you and are not legal advice).
 6. **Get permission in writing** from NIKS GAMES LLC (what you may use, and
    any limits), and keep it with the project files.
+
+## Playing on iPad
+
+The game is built for iPad first (touch-sized controls, landscape and
+portrait). In Safari, Share → **Add to Home Screen** opens it full screen
+like an app.
+
+One catch: the home-screen app is separate from Safari, and the sign-in
+email's link always opens in Safari. Inside the home-screen app you sign in
+by typing the 6-digit code from the email, and that code only appears in the
+email once custom SMTP is set up (step 3 above). Until then, play in Safari.
 
 ## Updating the game
 

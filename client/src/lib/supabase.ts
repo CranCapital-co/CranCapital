@@ -5,8 +5,19 @@ export const SUPABASE_KEY: string = import.meta.env.VITE_SUPABASE_KEY;
 export const DEV_LOGIN = import.meta.env.VITE_DEV_LOGIN === '1';
 export const BACKEND_READY = !!(SUPABASE_URL && SUPABASE_KEY);
 
+// A sign-in link from an email lands here with tokens (or an error) in the
+// URL hash. Note it before the client reads and clears it.
+const landedHash = typeof window !== 'undefined' ? window.location.hash : '';
+export const AUTH_RETURN = /(^#|&)(access_token|error_description)=/.test(landedHash);
+export const AUTH_ERROR: string | null = /(^#|&)error_description=/.test(landedHash)
+  ? decodeURIComponent((landedHash.match(/error_description=([^&]*)/)?.[1] ?? '').replace(/\+/g, ' '))
+  : null;
+
+// "implicit" flow: the emailed link signs in whichever browser opens it. (The
+// PKCE flow only works in the browser that asked for the link, which breaks
+// when a mail app opens links in its own browser.)
 export const supabase: SupabaseClient = createClient(SUPABASE_URL || 'http://localhost:54321', SUPABASE_KEY || 'missing', {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
   realtime: { params: { eventsPerSecond: 20 } },
 });
 

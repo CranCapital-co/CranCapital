@@ -116,7 +116,7 @@ export default function Landing() {
             <a className="btn gold" href="#/play">Play free</a>
             <a className="btn ghost" href="#/tutorial">Try Tutorial Island</a>
           </div>
-          <p className="tiny muted">No downloads. Works in a phone or laptop browser. Money in the game can’t be bought.</p>
+          <p className="tiny muted">Made for iPad: add it to your Home Screen to play full screen. Works in any modern browser. Money in the game can’t be bought.</p>
         </div>
         <Skyline />
       </header>

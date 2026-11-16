@@ -33,7 +33,7 @@ export default function BuildWindow() {
           <div className="row between">
             <div>
               <b>🛒 Food cart</b> · {money(types(1)[0].cost)}
-              <div className="small muted">{carts} of {cat.config.max_carts} carts. Busy streets near stations and sights sell most.</div>
+              <div className="small muted">{carts} of {cat.config.max_carts} carts. Busy streets near stations and sights sell most: the 🔥 button on the map shows where crowds are thickest.</div>
             </div>
             <button
               className="btn small"
@@ -41,7 +41,6 @@ export default function BuildWindow() {
               onClick={() => {
                 set({ mode: { kind: 'place-cart' } });
                 close();
-                toast('Tip: turn on the 🔥 heat map to see where crowds are thickest.', 'info');
               }}
             >
               Choose a spot

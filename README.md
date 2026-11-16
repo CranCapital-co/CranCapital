@@ -5,6 +5,9 @@ Start with one food cart on a real street in London, New York, Tokyo,
 Singapore or Paris, and grow it into shops, land, mines, factories, ports and a bank.
 Businesses keep earning while you're offline (for up to 24 hours).
 
+Made for iPad: everything is sized for fingers, and "Add to Home Screen" in
+Safari opens the game full screen. It also works in any modern browser.
+
 CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permission.
 
 - Play: https://harryxgreenhalgh-prog.github.io/CranCapital/
