@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY } from '../lib/supabase';
 import { useGame } from '../lib/store';
-import { subscribeUser, unsubscribeUser, leaveWorld } from '../lib/realtime';
+import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/realtime';
 import { localTime } from '../lib/format';
 import type { Catalog, Me } from '../lib/types';
 import World from './World';
@@ -178,7 +178,7 @@ function TutorialOffer({ onSkip }: { onSkip: () => void }) {
   );
 }
 
-function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: string) => void }) {
+function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -200,7 +200,7 @@ function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: stri
         <p className="muted">Real streets, real local time. You can fly to the others later.</p>
         <div className="city-cards">
           {catalog.cities.filter((c) => c.open).map((c) => (
-            <button key={c.id} className="city-card" disabled={busy} onClick={async () => { setBusy(true); onPick(c.id); }}>
+            <button key={c.id} className="city-card" disabled={busy} onClick={async () => { setBusy(true); try { await onPick(c.id); } finally { setBusy(false); } }}>
               <div className="skyline" aria-hidden>
                 {[40, 64, 30, 80, 52, 70, 36, 58].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}
               </div>
@@ -221,7 +221,15 @@ function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: stri
 export default function Play() {
   const { session, me, catalog, needsProfile, set, toast } = useGame();
   const [booting, setBooting] = useState(true);
-  const [skipTutorial, setSkipTutorial] = useState(false);
+  const [skipTutorial, setSkipTutorial] = useState(() => {
+    try {
+      return sessionStorage.getItem('cc_skip_tutorial') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (!BACKEND_READY) {
@@ -250,16 +258,19 @@ export default function Play() {
     let alive = true;
     (async () => {
       try {
+        setBootError(null);
         const r = await rpc<any>('session_start');
         if (!alive) return;
-        if (r?.needs_profile) {
+        if (!r) {
+          setBootError('Your session has expired. Please sign in again.');
+        } else if (r.needs_profile) {
           set({ needsProfile: true, me: null });
         } else {
           set({ me: r.me, needsProfile: false, away: r.away && (r.away.net !== 0 || r.away.notifications?.length || r.away.attention?.length) ? r.away : null });
           if (r.new_day && r.loyalty_added) toast(`Welcome back! +${r.loyalty_added} loyalty points for today.`, 'success');
         }
       } catch (e: any) {
-        toast(e.message, 'error');
+        if (alive) setBootError(e.message);
       } finally {
         if (alive) setBooting(false);
       }
@@ -267,7 +278,19 @@ export default function Play() {
     return () => {
       alive = false;
     };
-  }, [session, set, toast]);
+  }, [session, set, toast, retry]);
+
+  // Finished Tutorial Island before signing up: count it now.
+  useEffect(() => {
+    if (!me || me.tutorial_done) return;
+    try {
+      if (localStorage.getItem('cc_tutorial_done') === '1') {
+        rpc('complete_tutorial').then(() => set({ me: { ...me, tutorial_done: true } })).catch(() => {});
+      }
+    } catch {
+      /* storage may be blocked */
+    }
+  }, [me, set]);
 
   useEffect(() => {
     if (!me?.id) return;
@@ -289,6 +312,7 @@ export default function Play() {
     const beat = async () => {
       try {
         const h = await rpc<any>('heartbeat');
+        retrack();
         const g = useGame.getState();
         if (g.me) {
           const arrived = g.me.travel_to && !h.travel_to;
@@ -313,6 +337,19 @@ export default function Play() {
           <Brand />
           <h1 style={{ fontSize: 26 }}>The game server isn’t connected yet</h1>
           <p className="muted">This build has no Supabase address. You can still explore <a href="#/tutorial">Tutorial Island</a>.</p>
+        </div>
+      </div>
+    );
+  }
+  if (bootError && session && !me) {
+    return (
+      <div className="center-screen">
+        <div className="auth-card stack">
+          <Brand />
+          <h1 style={{ fontSize: 24 }}>Couldn’t load your game</h1>
+          <div className="notice red">{bootError}</div>
+          <button className="btn" onClick={() => setRetry((x) => x + 1)}>Try again</button>
+          <button className="btn ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
         </div>
       </div>
     );

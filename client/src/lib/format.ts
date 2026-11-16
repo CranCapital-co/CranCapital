@@ -9,9 +9,13 @@ export function money(mills: number | null | undefined, opts: { cents?: boolean;
     const units: [number, string][] = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M']];
     for (const [d, s] of units) if (a >= d) return `${sign}$${(a / d).toFixed(a / d >= 100 ? 0 : a / d >= 10 ? 1 : 2)}${s}`;
   }
-  if (opts.compact && a >= 10000) return `${sign}$${(a / 1000).toFixed(a >= 100000 ? 0 : 1)}k`;
+  if (opts.compact && a >= 10000) {
+    if (a >= 999_500) return `${sign}$${(a / 1e6).toFixed(2)}M`;
+    return `${sign}$${(a / 1000).toFixed(a >= 100000 ? 0 : 1)}k`;
+  }
   const showCents = opts.cents ?? a < 10000;
-  const digits = a > 0 && a < 1 ? 3 : showCents ? 2 : 0;
+  // Show tenths of a cent only when they matter (e.g. $0.088).
+  const digits = a > 0 && a < 1 && Math.round(a * 1000) % 10 !== 0 ? 3 : showCents ? 2 : 0;
   return `${sign}$${a.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 

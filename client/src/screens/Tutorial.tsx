@@ -96,7 +96,7 @@ export default function Tutorial() {
     { id: 'chips', price: 3500 },
     { id: 'onigiri', price: 3000 },
   ]);
-  const [stock, setStock] = useState<Record<string, number>>({ lettuce: 120, tomato: 80, potato: 120, rice: 80, wasabi: 40, pumpkin: 0, banana: 0 });
+  const [stock, setStock] = useState<Record<string, number>>({ lettuce: 120, tomato: 80, potato: 120, rice: 80, wasabi: 40, pumpkin: 80, banana: 90 });
   const [sales, setSales] = useState({ count: 0, revenue: 0 });
   const [secs, setSecs] = useState(0);
   const stepRef = useRef(step);
@@ -271,13 +271,19 @@ export default function Tutorial() {
   }, [step]);
 
   useEffect(() => {
-    if (step === 'sell' && secs >= 18) setStep('price');
-    if (step === 'price' && secs >= 16) setStep('restock');
+    // Reset the clock in the same update so the next step gets its full time.
+    if (step === 'sell' && secs >= 18) { setSecs(0); setStep('price'); }
+    if (step === 'price' && secs >= 16) { setSecs(0); setStep('restock'); }
   }, [step, secs]);
 
   const low = useMemo(() => Object.entries(stock).filter(([g, q]) => q < 40 && menu.some((m) => g in DISHES.find((d) => d.id === m.id)!.ing)), [stock, menu]);
 
   async function finish() {
+    try {
+      localStorage.setItem('cc_tutorial_done', '1');
+    } catch {
+      /* storage may be blocked */
+    }
     if (BACKEND_READY) {
       const { data } = await supabase.auth.getSession();
       if (data.session) await rpc('complete_tutorial').catch(() => {});
@@ -297,7 +303,7 @@ export default function Tutorial() {
           </div>
         </div>
         <div className="grow" />
-        <a className="btn small ghost" href="#/play" style={{ background: 'var(--panel)' }}>Skip</a>
+        <a className="btn small ghost" href="#/play" onClick={() => { try { sessionStorage.setItem('cc_skip_tutorial', '1'); } catch { /* ignore */ } }} style={{ background: 'var(--panel)' }}>Skip</a>
       </div>
       {msg && <div className="mode-banner">{msg}</div>}
       <div className="coach">
@@ -349,11 +355,11 @@ export default function Tutorial() {
             <p className="small">
               {step === 'sell'
                 ? 'Customers walking past stop and buy. Each sale uses ingredients from your storage.'
-                : 'Drag the salad price up to about $6 and watch: fewer people buy. Finding the best price is the game.'}
+                : `Drag the ${DISHES.find((x) => x.id === menu[0]?.id)?.name ?? 'first dish'} price up by half and watch: fewer people buy. Finding the best price is the game.`}
             </p>
             {step === 'price' && (
-              <input type="range" min={2000} max={8000} step={100} value={menu.find((m) => m.id === 'salad')?.price ?? 4000}
-                onChange={(e) => setMenu(menu.map((m) => (m.id === 'salad' ? { ...m, price: Number(e.target.value) } : m)))} aria-label="Salad price" />
+              <input type="range" min={1500} max={9000} step={100} value={menu[0]?.price ?? 4000}
+                onChange={(e) => setMenu(menu.map((m, i) => (i === 0 ? { ...m, price: Number(e.target.value) } : m)))} aria-label="First dish price" />
             )}
             <div className="row between"><span>Sales</span><b>{sales.count}</b></div>
             <div className="row between"><span>Takings</span><b>{money(sales.revenue)}</b></div>

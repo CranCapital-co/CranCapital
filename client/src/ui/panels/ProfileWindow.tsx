@@ -5,12 +5,13 @@ import { date, money, num } from '../../lib/format';
 import { Window, useApi, Loading, Avatar, Stat, Field, Modal } from '../components';
 
 export default function ProfileWindow({ params }: { params: { player_no: number } }) {
-  const { data: p, reload } = useApi(() => rpc<any>('public_profile', { p_player_no: params.player_no }), [params.player_no]);
+  const { data: p, reload, loading } = useApi(() => rpc<any>('public_profile', { p_player_no: params.player_no }), [params.player_no]);
   const open = useGame((s) => s.open);
   const [report, setReport] = useState(false);
   const [reason, setReason] = useState('harassment');
   const [details, setDetails] = useState('');
   const cat = catalog();
+  if (!p && !loading) return <Window title="Player"><p>This player isn’t around any more.</p></Window>;
   if (!p) return <Window title="Player"><Loading /></Window>;
   return (
     <Window title={p.name} icon="👤">

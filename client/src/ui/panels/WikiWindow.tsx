@@ -8,7 +8,18 @@ export default function WikiWindow({ params }: { params?: { slug?: string } }) {
   return (
     <Window title={slug ? WIKI.find((p) => p.slug === slug)?.title ?? 'Help' : 'Help and wiki'} icon="📖" onBack={slug ? () => setSlug(null) : undefined}>
       {text ? (
-        <Markdown text={text} />
+        <div
+          onClick={(e) => {
+            const a = (e.target as HTMLElement).closest('a');
+            const href = a?.getAttribute('href') ?? '';
+            if (!href.startsWith('#/')) return;
+            e.preventDefault();
+            if (href.startsWith('#/wiki/')) setSlug(href.slice(7));
+            else window.open(window.location.pathname + href, '_blank', 'noopener');
+          }}
+        >
+          <Markdown text={text} />
+        </div>
       ) : (
         <div className="stack">
           <a className="card click row between" href="#/tutorial" style={{ textDecoration: 'none', color: 'inherit' }}>

@@ -3,7 +3,7 @@ import GameMap, { type MapApi } from '../map/GameMap';
 import { useGame, act, cityOf, cityName } from '../lib/store';
 import { rpc } from '../lib/supabase';
 import { loadCity, trafficAt, distM, type CityData } from '../lib/citydata';
-import { joinWorld } from '../lib/realtime';
+import { joinWorld, leaveWorld } from '../lib/realtime';
 import { money, localTime, ringFor, until } from '../lib/format';
 import { Avatar, Modal, Progress } from '../ui/components';
 import AwayCard from '../ui/AwayCard';
@@ -102,6 +102,17 @@ export default function World() {
     const pos = useGame.getState().pos ?? { lat: me.lat ?? city.meta.start.lat, lng: me.lng ?? city.meta.start.lng };
     joinWorld(cityId, me.player_no, { no: me.player_no, n: me.display_name, s: me.skin, r: ringFor(me.net_worth), rs: me.ring_style, t: me.title, lat: pos.lat, lng: pos.lng, in: false, at: Date.now() });
   }, [city, cityId, me?.player_no, me?.skin, me?.display_name, me?.travel_to]);
+
+  // Leave the city's presence channel when flying or leaving the game.
+  useEffect(() => {
+    if (me.travel_to) leaveWorld();
+  }, [me.travel_to]);
+  useEffect(() => () => leaveWorld(), []);
+
+  // A half-finished cart placement is dropped when the mode changes.
+  useEffect(() => {
+    setPending(null);
+  }, [mode.kind]);
 
   // Refresh money and open windows every 30 s so offline sales show up.
   useEffect(() => {

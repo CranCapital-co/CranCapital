@@ -190,7 +190,7 @@ table.list .r { text-align: right; }
 
 /* Modal */
 .modal-back { position: fixed; inset: 0; background: rgba(10, 20, 17, 0.45); z-index: 80; display: grid; place-items: center; padding: 16px; animation: fade 0.15s; }
-.modal { background: var(--panel-solid); border-radius: 18px; box-shadow: var(--shadow); width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; }
+.modal { background: var(--panel-solid); border-radius: 18px; box-shadow: var(--shadow); width: min(520px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; }
 @keyframes fade { from { opacity: 0; } }
 
 /* Markdown */
@@ -214,3 +214,8 @@ table.list .r { text-align: right; }
 .skeleton { background: linear-gradient(90deg, var(--bg-2), var(--line), var(--bg-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 8px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Phones: 16px inputs stop iOS Safari zooming in on every tap. */
+@media (max-width: 720px) {
+  .input, select.input, textarea.input, .chat-input input { font-size: 16px; }
+}

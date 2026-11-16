@@ -51,7 +51,7 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
             {b.status === 'open' ? '● Open' : '○ Closed'} — tap to {b.status === 'open' ? 'close' : 'open'}
           </button>
         </div>
-        {flagList(b.flags).map((f) => <div key={f} className="notice red small">{f}{b.flags.missing ? `: needs ${b.flags.missing.join(', ')}` : ''}</div>)}
+        {flagList(b.flags).map((f) => <div key={f} className="notice red small">{f}{f === 'Fit-out incomplete' && b.flags.missing ? `: needs ${b.flags.missing.join(', ')}` : ''}</div>)}
         <Tabs tabs={tabs} value={tab} onChange={setTab} />
         {tab === 'overview' && <Overview b={b} t={t} />}
         {tab === 'menu' && <MenuEditor b={b} onSaved={done} />}
@@ -454,7 +454,7 @@ function ShippingTab({ b }: { b: Business }) {
   const [to, setTo] = useState(cat.cities.find((c) => c.id !== b.city_id)?.id ?? '');
   const [kind, setKind] = useState<'export' | 'transfer'>('export');
   useEffect(() => {
-    if (!good && goods[0]) setGood(goods[0].good);
+    if ((!good || !goods.some((x: any) => x.good === good)) && goods[0]) setGood(goods[0].good);
   }, [goods, good]);
   const unit = prop?.export_prices?.[to]?.[good];
   const g = cat.goods.find((x) => x.id === good);

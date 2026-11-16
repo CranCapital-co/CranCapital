@@ -85,8 +85,10 @@ function Chat({ initial }: { initial?: number }) {
     let unsub: (() => void) | null = null;
     const load = () => rpc<any[]>('chat_history', { p_channel: channel }).then((m) => alive && setMessages(m)).catch(() => {});
     load();
+    let blocked = new Set<number>();
+    rpc<any[]>('my_blocks').then((b) => (blocked = new Set(b.map((x) => x.player_no)))).catch(() => {});
     subscribeChat(channel, (m) => {
-      if (!alive) return;
+      if (!alive || blocked.has(m.author?.player_no)) return;
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
     }).then((u) => {
       if (alive) unsub = u;

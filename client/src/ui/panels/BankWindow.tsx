@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { rpc } from '../../lib/supabase';
 import { useGame, act } from '../../lib/store';
 import { money, ago, date, num } from '../../lib/format';
@@ -25,9 +25,18 @@ function Balance() {
   const me = useGame((s) => s.me)!;
   const [kind, setKind] = useState<string>('');
   const [rows, setRows] = useState<any[] | null>(null);
+  const kindRef = useRef(kind);
   const { data } = useApi(async () => {
     const r = await rpc<any>('my_ledger', { p_kind: kind || null });
-    setRows(r.rows);
+    // New filter: start over. Same filter (a refresh): add new rows on top,
+    // keep any older pages already loaded.
+    setRows((prev) => {
+      if (!prev || kindRef.current !== kind) return r.rows;
+      const seen = new Set(r.rows.map((x: any) => x.id));
+      const oldest = r.rows.length ? r.rows[r.rows.length - 1].id : Infinity;
+      return [...r.rows, ...prev.filter((x) => !seen.has(x.id) && x.id < oldest)];
+    });
+    kindRef.current = kind;
     return r;
   }, [kind]);
   const more = async () => {

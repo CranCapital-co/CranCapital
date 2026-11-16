@@ -31,6 +31,12 @@ export interface CityData {
 const cache = new Map<string, Promise<CityData>>();
 const base = import.meta.env.BASE_URL;
 
+async function json(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ': ' + r.status);
+  return r.json();
+}
+
 async function bin(url: string) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -43,10 +49,13 @@ export function loadCity(id: string): Promise<CityData> {
       id,
       (async () => {
         const dir = `${base}cities/${id}/`;
-        const meta = (await (await fetch(dir + 'meta.json')).json()) as CityMeta;
+        const meta = (await json(dir + 'meta.json')) as CityMeta;
         const [traffic, plots, coast] = await Promise.all([bin(dir + 'traffic.bin'), bin(dir + 'plots.bin'), bin(dir + 'coast.bin')]);
         return { meta, traffic, plots, coast };
-      })()
+      })().catch((e) => {
+        cache.delete(id); // a network blip shouldn't stick
+        throw e;
+      })
     );
   }
   return cache.get(id)!;

@@ -11,17 +11,20 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], every = 0)
   const [loading, setLoading] = useState(true);
   const refreshKey = useGame((s) => s.refreshKey);
   const alive = useRef(true);
+  const seq = useRef(0);
   const load = useCallback(async () => {
+    // Only the latest request may update state (a slow older one is ignored).
+    const id = ++seq.current;
     try {
       const r = await fn();
-      if (alive.current) {
+      if (alive.current && id === seq.current) {
         setData(r);
         setError(null);
       }
     } catch (e: any) {
-      if (alive.current) setError(e?.message ?? String(e));
+      if (alive.current && id === seq.current) setError(e?.message ?? String(e));
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current && id === seq.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -265,7 +268,11 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 // Dollar input that keeps mills internally.
 export function DollarInput({ value, onChange, min = 0, step = 0.01 }: { value: number; onChange: (mills: number) => void; min?: number; step?: number }) {
   const [text, setText] = useState((value / 1000).toString());
-  useEffect(() => setText((value / 1000).toString()), [value]);
+  // Only rewrite the box when the value changed from outside, so typing
+  // "4." or "0.0" isn't eaten mid-edit.
+  useEffect(() => {
+    setText((t) => (Math.round(Number(t) * 1000) === value ? t : (value / 1000).toString()));
+  }, [value]);
   return (
     <div className="dollar">
       <span>$</span>

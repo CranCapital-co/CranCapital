@@ -26,7 +26,7 @@ export default function MarketWindow({ params }: { params?: { good?: string } })
             ))}
           </div>
         </div>
-        <GoodDetail good={good} />
+        <GoodDetail key={good} good={good} />
       </div>
     </Window>
   );
@@ -40,15 +40,15 @@ function GoodDetail({ good }: { good: string }) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [qty, setQty] = useState(1000);
   const [limit, setLimit] = useState(false);
-  const [price, setPrice] = useState(0);
+  const [priceText, setPriceText] = useState('');
   const [city, setCity] = useState(me.city_id ?? 'london');
   const [quote, setQuote] = useState<any>(null);
+  const price = Math.round(Number(priceText) * 1000) || 0;
+  // Suggest the traders' price once per side (the component is keyed by good).
   useEffect(() => {
-    if (d && !price) setPrice(side === 'buy' ? d.npc.ask : d.npc.bid);
-  }, [d, side, price]);
-  useEffect(() => {
-    setPrice(0);
-  }, [good]);
+    if (d && d.good === good) setPriceText(((side === 'buy' ? d.npc.ask : d.npc.bid) / 1000).toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [side, d?.good]);
   useEffect(() => {
     if (limit || qty <= 0) return setQuote(null);
     const t = setTimeout(() => rpc('market_quote', { p_good: good, p_side: side, p_qty: qty }).then(setQuote).catch(() => setQuote(null)), 250);
@@ -86,7 +86,7 @@ function GoodDetail({ good }: { good: string }) {
       </div>
 
       <div className="card stack">
-        <Tabs tabs={[['buy', 'Buy'], ['sell', 'Sell']]} value={side} onChange={(v) => { setSide(v); setPrice(0); }} />
+        <Tabs tabs={[['buy', 'Buy'], ['sell', 'Sell']]} value={side} onChange={setSide} />
         <div className="grid2">
           <Field label="Quantity" hint={side === 'sell' ? `You have ${num(have)} in ${cityName(city)}` : undefined}>
             <input className="input" type="number" min={1} value={qty} onChange={(e) => setQty(Math.max(0, Math.floor(Number(e.target.value))))} />
@@ -103,7 +103,7 @@ function GoodDetail({ good }: { good: string }) {
         </label>
         {limit ? (
           <Field label="Price per unit ($)">
-            <input className="input" type="number" step="0.001" min={0.001} value={price / 1000} onChange={(e) => setPrice(Math.round(Number(e.target.value) * 1000))} />
+            <input className="input" inputMode="decimal" value={priceText} onChange={(e) => setPriceText(e.target.value.replace(/[^0-9.]/g, ''))} />
           </Field>
         ) : (
           quote && (

@@ -106,6 +106,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       rpc('report_position', { p_lat: pos.lat, p_lng: pos.lng, p_inside: st.inside }).then((r: any) => {
         if (r && typeof r.lat === 'number' && distM(r.lat, r.lng, pos.lat, pos.lng) > 60 && !useGame.getState().walkingTo) {
           pos = { lat: r.lat, lng: r.lng }; // the server held us back
+          useGame.setState({ pos: { ...pos } });
           setGeo('me', meFeature());
         }
       }).catch(() => {});
@@ -156,7 +157,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     const unsubPresence = onPresence((others) => {
       const feats: GeoJSON.Feature[] = [];
       others.forEach((p) => {
-        if (p.in || Date.now() - p.at > 5 * 60_000) return;
+        if (p.in) return;
         feats.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [p.lng, p.lat] },

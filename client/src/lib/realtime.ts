@@ -74,8 +74,16 @@ export function leaveWorld() {
   listeners.forEach((l) => l(others));
 }
 
+let lastPresence: Presence | null = null;
+
+// Re-announce my position (the heartbeat calls this so idle players stay visible).
+export function retrack() {
+  if (lastPresence) track({ ...lastPresence, at: Date.now() }, true);
+}
+
 // Share my position, at most once a second.
 export function track(p: Presence, force = false) {
+  lastPresence = p;
   pendingTrack = p;
   const now = Date.now();
   if (force || now - lastTrack > 1000) {
