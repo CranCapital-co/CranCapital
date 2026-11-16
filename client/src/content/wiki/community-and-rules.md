@@ -49,8 +49,7 @@ Nothing is hidden without telling you. There is no shadow-banning.
 
 ## Mute, block and report
 
-- Mute a player to stop seeing their chat messages.
-- Block a player to stop them messaging you.
+- Block a player (from their profile or a message’s menu) to hide their chat messages from you and stop direct messages both ways. They aren’t told.
 - Report a player or a message from its menu.
 
 Reports go to the moderation team, who are real people.

@@ -159,3 +159,9 @@
 @media (max-width: 720px) { .market { grid-template-columns: 1fr; } .market .goods-list { max-height: 30vh; } }
 blockquote { margin: 0; }
 details summary { cursor: pointer; color: var(--ink-2); }
+
+/* Keep the OpenStreetMap credit visible above the dock on phones. */
+@media (max-width: 900px) {
+  .game .maplibregl-ctrl-bottom-left { bottom: calc(env(safe-area-inset-bottom) + 88px); }
+  .game .maplibregl-ctrl-attrib { max-width: calc(100vw - 80px); font-size: 10px; }
+}

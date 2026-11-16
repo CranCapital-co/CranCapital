@@ -67,7 +67,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       dragRotate: true,
     });
     mapRef.current = map;
-    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-left');
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     installIconFactory(map);
     const crowd = new Crowd(map);

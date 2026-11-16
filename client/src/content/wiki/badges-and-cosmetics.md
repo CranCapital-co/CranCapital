@@ -12,7 +12,15 @@ Your profile shows who you are in the world. None of it can be bought with real 
 
 ## The net-worth ring
 
-The ring changes as your net worth grows. It goes from bronze to silver, then gold, then diamond.
+The ring changes as your net worth grows:
+
+| Ring | Net worth |
+| --- | --- |
+| Plain | under $50,000 |
+| Bronze | $50,000 |
+| Silver | $500,000 |
+| Gold | $5,000,000 |
+| Diamond | $50,000,000 |
 
 Everyone can see it on the map.
 

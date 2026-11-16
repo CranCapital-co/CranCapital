@@ -80,7 +80,10 @@ grant execute on function public.realtime_can_listen(text) to authenticated;
 do $$
 begin
   if to_regclass('realtime.messages') is not null then
-    execute 'alter table realtime.messages enable row level security';
+    -- Hosted Supabase already has RLS on (and doesn't let postgres alter it).
+    if not (select relrowsecurity from pg_class where oid = 'realtime.messages'::regclass) then
+      execute 'alter table realtime.messages enable row level security';
+    end if;
     execute 'drop policy if exists "crancapital receive own and chat" on realtime.messages';
     execute $p$
       create policy "crancapital receive own and chat" on realtime.messages

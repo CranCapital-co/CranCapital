@@ -58,8 +58,7 @@ Filters never hide your message quietly. If a message was sent, others can see i
 
 You are in control of what you see.
 
-- Mute a player to stop seeing their messages in chat.
-- Block a player to stop them sending you direct messages.
+- Block a player (from their profile or a message’s menu) to hide their chat messages from you and stop direct messages both ways. They aren’t told.
 
 Neither one tells the other player. You can undo both at any time.
 

@@ -105,12 +105,20 @@ async function auth() {
     uri_allow_list: [site, `${site}**`, 'http://localhost:5173/**', 'http://localhost:4173/**'].join(','),
     external_email_enabled: true,
     mailer_otp_length: 6,
-    mailer_subjects_magic_link: 'Your CranCapital sign-in code',
-    mailer_templates_magic_link_content: linkCode('Sign in to'),
-    mailer_subjects_confirmation: 'Your CranCapital sign-in code',
-    mailer_templates_confirmation_content: linkCode('Welcome to'),
   });
-  console.log(`auth: site ${site}, redirect URLs and email templates set`);
+  console.log(`auth: site ${site} and redirect URLs set`);
+  // Custom email text needs a paid plan or your own SMTP server.
+  try {
+    await api('PATCH', '/config/auth', {
+      mailer_subjects_magic_link: 'Your CranCapital sign-in code',
+      mailer_templates_magic_link_content: linkCode('Sign in to'),
+      mailer_subjects_confirmation: 'Your CranCapital sign-in code',
+      mailer_templates_confirmation_content: linkCode('Welcome to'),
+    });
+    console.log('auth: email templates set (link + 6-digit code)');
+  } catch (e) {
+    console.log('auth: kept Supabase default email text (custom templates need your own SMTP server; see docs/SETUP.md)');
+  }
 }
 
 async function keys() {

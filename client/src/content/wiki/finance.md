@@ -1,51 +1,37 @@
 # Finance
 
-Tier 6 unlocks at $15,000,000 net worth. It is the last tier, and it is about credit, risk and investment.
+Finance is tier 6. It unlocks at $15,000,000 net worth. Loans from the city bank are open to everyone.
 
-This page gives an overview. The details are shown in the game when you open each screen.
+## Loans
 
-## Banks
+You can owe up to 30% of your net worth in total. Repayments are taken every minute: interest plus an even share of the loan.
 
-A bank costs $2,000,000. Like a shop, it goes in a rented room.
+| Lender | Rate | Longest loan | Who can use it |
+| --- | --- | --- | --- |
+| City bank | 0.8% a day | 30 days | Everyone |
+| Player banks | set by the owner, up to 5% a day | set by the owner, up to 60 days | Everyone except the bank's owner |
 
-It needs a service counter and a vault before it can open. It costs $20 an hour to run and has a staff of 5.
+- Repay early any time from Bank → Loans.
+- If you fall 7 days of repayments behind, the loan defaults. The lender loses what's left, and you can't borrow again for 30 days.
 
-With a bank you lend your own money to other players. You set the interest rate.
+## Run a bank
 
-## Lending
+1. Rent a room in any building and open a Bank ($2,000,000 licence).
+2. Move capital into it from your cash.
+3. Set your daily rate, largest loan and longest loan.
+4. Other players see your bank in Bank → Loans and borrow from it.
 
-Lending earns interest, but it carries risk. A borrower may be unable to pay you back.
+Repayments and interest flow back into the bank's capital. Take capital out whenever it isn't lent. Lending is risky: a borrower who stops paying can default.
 
-Before you lend, look at the borrower:
+## Shares
 
-- How large is their net worth compared with the loan?
-- Do their businesses make steady money?
-- How long have they been playing?
+At tier 6 you can take your company public from Bank → Shares.
 
-A higher rate earns more but attracts fewer borrowers. Spreading money over several loans lowers the damage from one bad one.
+- Every company has 1,000,000 shares. You can sell up to 49% at the price you choose.
+- Anyone from tier 2 can buy and sell shares in the share order book. Sellers pay the usual 1% fee.
+- Owners can pay a dividend per share to every other shareholder.
+- Shares you hold in other companies count toward your net worth at the last trade price.
 
-## Borrowing
+## World events
 
-Any player can ask a bank for a loan. Borrowing lets you build sooner than saving would.
-
-Borrow only for things that earn more than the interest costs. Check the rate and the repayment terms before you accept.
-
-## Going public
-
-You can take your company public. That means selling shares in it to other players.
-
-Selling shares raises money without a loan. In return, shareholders own a part of your company.
-
-Taking your company public earns the Public company badge.
-
-## Buying shares
-
-You can buy shares in other players' companies. Their value follows how well the company does.
-
-Shares can lose value as well as gain it. Never invest money your own businesses need for stock or wages.
-
-## A reminder
-
-All of this is play money. In-game money, loans and shares have no real-world value and can't be cashed out.
-
-Nothing in the game is financial advice for the real world.
+Festivals, heatwaves, strikes and sales weekends change crowds in a city for a day or more. You'll see them in the Travel window and as notifications.
