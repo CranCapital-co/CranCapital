@@ -165,3 +165,12 @@ details summary { cursor: pointer; color: var(--ink-2); }
   .game .maplibregl-ctrl-bottom-left { bottom: calc(env(safe-area-inset-bottom) + 88px); }
   .game .maplibregl-ctrl-attrib { max-width: calc(100vw - 80px); font-size: 10px; }
 }
+
+/* The street map couldn't load: say why, over the backup map. */
+.map-issue {
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 72px); transform: translateX(-50%); z-index: 12;
+  width: min(520px, calc(100% - 32px)); display: grid; gap: 6px; padding: 12px 14px;
+  background: var(--panel-solid); color: var(--ink); border: 1px solid var(--line-2); border-left: 4px solid var(--gold);
+  border-radius: 14px; box-shadow: var(--shadow); font-size: 14px; line-height: 1.4;
+}
+.map-issue .row { display: flex; gap: 8px; margin-top: 4px; }

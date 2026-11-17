@@ -10,8 +10,8 @@ Safari opens the game full screen. It also works in any modern browser.
 
 CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permission.
 
-- Play: https://harryxgreenhalgh-prog.github.io/CranCapital/
-- Tutorial Island (no account): https://harryxgreenhalgh-prog.github.io/CranCapital/#/tutorial
+- Play: https://harryxgreenhalgh-prog.github.io/WorldEconomy/
+- Tutorial Island (no account): https://harryxgreenhalgh-prog.github.io/WorldEconomy/#/tutorial
 
 ## How it fits together
 

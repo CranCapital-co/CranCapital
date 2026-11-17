@@ -158,7 +158,9 @@ export function trafficImage(d: CityData): { url: string; coords: [[number, numb
 }
 
 // Green overlay of where carts may park (one pixel per 5 m cell). Needs loadWalk first.
-export function walkImage(d: CityData): { url: string; coords: [[number, number], [number, number], [number, number], [number, number]] } | null {
+// The walkable-street grid as a map image: green for "a cart may park here",
+// or the road colour for the backup street map.
+export function walkImage(d: CityData, rgba: [number, number, number, number] = [38, 166, 106, 150]): { url: string; coords: [[number, number], [number, number], [number, number], [number, number]] } | null {
   if (!d.walk) return null;
   const g = d.meta.grids.walk;
   const c = document.createElement('canvas');
@@ -171,10 +173,10 @@ export function walkImage(d: CityData): { url: string; coords: [[number, number]
       const i = y * g.w + x;
       if (((d.walk[i >> 3] >> (i & 7)) & 1) === 0) continue;
       const o = ((g.h - 1 - y) * g.w + x) * 4; // north up
-      img.data[o] = 38;
-      img.data[o + 1] = 166;
-      img.data[o + 2] = 106;
-      img.data[o + 3] = 150;
+      img.data[o] = rgba[0];
+      img.data[o + 1] = rgba[1];
+      img.data[o + 2] = rgba[2];
+      img.data[o + 3] = rgba[3];
     }
   ctx.putImageData(img, 0, 0);
   const m = d.meta;

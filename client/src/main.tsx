@@ -8,6 +8,9 @@ import './styles/global.css';
 import './styles/app.css';
 import './styles/touch.css';
 import App from './App';
+import { installErrorReporting } from './lib/errors';
+
+installErrorReporting();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

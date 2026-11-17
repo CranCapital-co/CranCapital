@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages serves the site from /CranCapital/; local dev from /.
+// GitHub Pages serves the site from /<repository name>/: the Pages workflow
+// passes it as VITE_BASE. Other builds use relative paths; local dev uses /.
 export default defineConfig(({ command }) => ({
-  base: process.env.VITE_BASE ?? (command === 'build' ? '/CranCapital/' : '/'),
+  base: process.env.VITE_BASE ?? (command === 'build' ? './' : '/'),
   plugins: [react()],
   build: {
     target: 'es2020',
