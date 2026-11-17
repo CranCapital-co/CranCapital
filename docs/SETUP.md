@@ -8,11 +8,14 @@ steps left for a person to do, then the routine for updates.
 
 1. **Turn on GitHub Pages.** Repo Settings → Pages → Source: **GitHub Actions**.
    Merging to `main` then publishes the site to
-   https://harryxgreenhalgh-prog.github.io/WorldEconomy/.
-   The address follows the repository's name: if you rename the repository,
-   put the new address in `siteUrl` in `tools/deploy/project.json` and run
-   `node tools/deploy/supabase.mjs --auth`, or sign-in links will point to the
-   old address.
+   https://crancapital-co.github.io/CranCapital/.
+   The address follows the repository's owner and name. The site itself
+   works at any address, but if you rename or move the repository, put the
+   new address in `siteUrl` in `tools/deploy/project.json` and run
+   `node tools/deploy/supabase.mjs --auth`, or sign-in links will point to
+   the old address. After a move, check the Pages setting is still
+   **GitHub Actions** and run the "Deploy site" workflow once (Actions tab →
+   Deploy site → Run workflow).
    Until this is on, the "Deploy site" workflow builds fine but its last step
    fails with "Ensure GitHub Pages has been enabled". After switching it on,
    open the failed run in the Actions tab and press **Re-run failed jobs**

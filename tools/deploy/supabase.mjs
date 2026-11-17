@@ -102,7 +102,8 @@ async function auth() {
 <p style="color:#666">If you didn't ask for this, you can ignore this email.</p>`;
   await api('PATCH', '/config/auth', {
     site_url: site,
-    uri_allow_list: [site, `${site}**`, 'http://localhost:5173/**', 'http://localhost:4173/**'].join(','),
+    // GitHub Pages paths aren't case-sensitive, so allow both spellings.
+    uri_allow_list: [...new Set([site, site.toLowerCase()])].flatMap((s) => [s, `${s}**`]).concat('http://localhost:5173/**', 'http://localhost:4173/**').join(','),
     external_email_enabled: true,
     mailer_otp_length: 6,
   });

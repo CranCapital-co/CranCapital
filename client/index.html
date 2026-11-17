@@ -17,7 +17,23 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until the game starts (React replaces it). If the game's files
+           can't load, this says so instead of leaving a blank page. -->
+      <div id="boot" style="font: 16px/1.5 -apple-system, system-ui, sans-serif; color: #15241f; background: #f6f2ea; min-height: 100vh; display: grid; place-items: center; text-align: center; padding: 24px; box-sizing: border-box">
+        <div>
+          <p id="boot-msg" style="margin: 0 0 16px">Loading CranCapital…</p>
+          <button id="boot-reload" onclick="location.reload()" style="display: none; font: inherit; font-weight: 600; padding: 12px 22px; border-radius: 999px; border: 0; background: #14463a; color: #fff">Reload</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      setTimeout(function () {
+        if (!document.getElementById('boot')) return;
+        document.getElementById('boot-msg').textContent = 'The game didn’t load. Check your connection and reload. If it keeps happening, the site may be updating: try again in a few minutes.';
+        document.getElementById('boot-reload').style.display = 'inline-block';
+      }, 15000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
