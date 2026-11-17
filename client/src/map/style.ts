@@ -4,8 +4,37 @@ import type { StyleSpecification } from 'maplibre-gl';
 // tiles (free, no key). Buildings are tinted by game state through
 // feature-state: status = mine | rented | owned | sale, selected = true.
 
+// The game's own city data (streets, plots, foot traffic) is OpenStreetMap
+// data too, so this credit shows even when only our data is on screen.
+// (MapLibre hides it when the full credit below, which contains it, shows.)
+export const OSM_ATTRIBUTION = '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>';
 export const ATTRIBUTION =
-  '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">© OpenMapTiles</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>';
+  '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">© OpenMapTiles</a> · ' + OSM_ATTRIBUTION;
+
+// The base map (streets, 3D buildings, labels) and its label fonts.
+export const OFM_URL = 'https://tiles.openfreemap.org/planet';
+export const OFM_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+
+// Our own copy of the label fonts (Noto Sans: Latin, Greek, Cyrillic,
+// punctuation and symbols), served with the site. Used by Tutorial Island and
+// whenever the map's font server can't be reached. Absolute, because MapLibre
+// fetches glyphs from a worker; built by hand because new URL() would encode
+// the {placeholders}.
+export const LOCAL_GLYPHS = `${location.origin}${import.meta.env.BASE_URL}glyphs/{fontstack}/{range}.pbf`;
+
+// Text drawn on the map must use characters the label fonts have, or MapLibre
+// drops the whole tile it's in. Keep what our own font files cover, plus
+// Chinese, Japanese and Korean (the browser draws those itself); drop the
+// rest (emoji and other scripts) from player and business labels.
+const LOCAL_SCRIPT = /\p{Ideo}|\p{sc=Hang}|\p{sc=Hira}|\p{sc=Kana}/u;
+export function mapText(s: string | null | undefined): string {
+  let out = '';
+  for (const ch of s ?? '') {
+    const c = ch.codePointAt(0)!;
+    if (c < 0x500 || (c >= 0x2000 && c < 0x2300) || (c >= 0x2500 && c < 0x2700) || LOCAL_SCRIPT.test(ch)) out += ch;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
 
 export interface Palette {
   land: string;
@@ -81,9 +110,9 @@ export function mapStyle(p: Palette = LIGHT): StyleSpecification {
     version: 8,
     // Soft, warm light so 3D buildings read clearly without going grey.
     light: { anchor: 'viewport', color: '#fff6e5', intensity: 0.22, position: [1.3, 210, 35] },
-    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    glyphs: OFM_GLYPHS,
     sources: {
-      ofm: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: ATTRIBUTION },
+      ofm: { type: 'vector', url: OFM_URL, attribution: ATTRIBUTION },
     },
     layers: [
       { id: 'background', type: 'background', paint: { 'background-color': p.land } },

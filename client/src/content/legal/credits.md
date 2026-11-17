@@ -43,8 +43,9 @@ This data is derived from OpenStreetMap. It is available under the ODbL in the g
 | --- | --- |
 | Fraunces | SIL Open Font License 1.1 |
 | Inter | SIL Open Font License 1.1 |
+| Noto Sans (map labels) | SIL Open Font License 1.1 |
 
-Both fonts are provided through Fontsource.
+Fraunces and Inter are provided through Fontsource. The Noto Sans map label files come from OpenFreeMap.
 
 ## Hosting
 

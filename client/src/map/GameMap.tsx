@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
-import maplibregl, { type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
+import { useEffect, useRef, useState } from 'react';
+import maplibregl, { type Map as MLMap, type GeoJSONSource, type VectorTileSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { mapStyle, LIGHT, DARK } from './style';
+import { mapStyle, LIGHT, DARK, OFM_URL, OFM_GLYPHS, LOCAL_GLYPHS, OSM_ATTRIBUTION, mapText } from './style';
 import { installIconFactory } from './icons';
 import { Crowd, crowdLevel, nightAlpha } from './crowd';
 import { useGame, catalog } from '../lib/store';
@@ -9,8 +9,14 @@ import { rpc } from '../lib/supabase';
 import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, inCity, type CityData } from '../lib/citydata';
 import { onPresence, track, type Presence } from '../lib/realtime';
 import { localHour, money, ringFor } from '../lib/format';
+import { reportError } from '../lib/errors';
 
 const WALK_SPEED = 45; // metres per second on screen (server allows up to 60)
+const BASE_MAP_TIMEOUT = 10_000; // ms before we stop waiting for street-map tiles
+
+// Why the street map isn't showing: 'slow' (no tiles yet) or 'blocked'
+// (the tile server refused or couldn't be reached).
+type MapIssue = null | 'slow' | 'blocked';
 
 export interface MapApi {
   map: MLMap;
@@ -41,6 +47,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   const nightEl = useRef<HTMLDivElement>(null);
   const ghostEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
+  const [issue, setIssue] = useState<MapIssue>(null);
   const cbs = useRef({ onArrive, onPlace, onTaxi });
   cbs.current = { onArrive, onPlace, onTaxi };
 
@@ -78,6 +85,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     let selectedBuilding: number | null = null;
     let stateIds: number[] = [];
     let destroyed = false;
+    let ready = false; // our sources and layers are on the map
 
     const setGeo = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 
@@ -93,7 +101,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
           geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
           properties: {
             icon: `av:${me?.skin ?? 'classic'}:${ringFor(me?.net_worth ?? 0)}:${me?.ring_style ?? 'standard'}`,
-            name: me?.display_name ?? 'You',
+            name: mapText(me?.display_name) || 'You',
           },
         }],
       } as GeoJSON.FeatureCollection;
@@ -165,7 +173,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         feats.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-          properties: { no: p.no, name: p.n, icon: `av:${p.s}:${p.r}:${p.rs || 'standard'}` },
+          properties: { no: p.no, name: mapText(p.n), icon: `av:${p.s}:${p.r}:${p.rs || 'standard'}` },
         });
       });
       setGeo('players', { type: 'FeatureCollection', features: feats });
@@ -192,7 +200,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
             return {
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [x.lng, x.lat] },
-              properties: { id: x.id, name: x.name, mine: x.mine, kind: x.kind, owner: x.owner_name, level: x.level, icon: `bz:${t?.icon ?? '🏪'}:${t?.tier ?? 1}:${x.mine ? 1 : 0}:${dim ? 1 : 0}` },
+              properties: { id: x.id, name: mapText(x.name), mine: x.mine, kind: x.kind, owner: x.owner_name, level: x.level, icon: `bz:${t?.icon ?? '🏪'}:${t?.tier ?? 1}:${x.mine ? 1 : 0}:${dim ? 1 : 0}` },
             };
           }),
         });
@@ -259,6 +267,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
 
     // ---------- modes ----------
     const applyMode = async () => {
+      if (!ready) return;
       const mode = useGame.getState().mode;
       const land = mode.kind === 'land';
       for (const id of ['plots-fill', 'plots-line', 'deposits']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', land ? 'visible' : 'none');
@@ -267,7 +276,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       if (placing) {
         await loadWalk(city);
         // Paint the streets where a cart may park in green.
-        if (!map.getSource('walk')) {
+        if (!destroyed && !map.getSource('walk')) {
           const img = walkImage(city);
           if (img) {
             map.addSource('walk', { type: 'image', url: img.url, coordinates: img.coords });
@@ -359,13 +368,117 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       useGame.setState({ walkingTo: { lat, lng }, inside: null });
     });
 
-    map.on('load', () => {
+    // ---------- the street map: watch it, and fall back if it can't load ----------
+    // The base map comes from OpenFreeMap. If its tiles or fonts are blocked
+    // (a VPN, an ad blocker, a school network) or very slow, MapLibre's
+    // 'load' event never fires, so nothing of ours waits for it: our layers
+    // go on as soon as the style is parsed. Then, if no street tile has
+    // arrived after a few seconds, we draw the city's streets from the game's
+    // own data (served with the site) and say what's wrong.
+    let baseOk = false;
+    let localGlyphs = false;
+    let fallbackAdded = false;
+    let retried = false;
+    const showFallback = (on: boolean) => {
+      if (map.getLayer('fallback-streets')) map.setLayoutProperty('fallback-streets', 'visibility', on ? 'visible' : 'none');
+    };
+    const startFallback = async (why: Exclude<MapIssue, null>) => {
+      if (destroyed || baseOk) return;
+      setIssue((cur) => (cur === 'blocked' ? cur : why));
+      if (fallbackAdded) return;
+      fallbackAdded = true;
+      try {
+        await loadWalk(city);
+        if (destroyed || !ready || map.getSource('fallback-streets')) return;
+        const p = dark() ? DARK : LIGHT;
+        const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+        const img = walkImage(city, [...hex(p.road), 255] as [number, number, number, number]);
+        if (!img) return;
+        map.addSource('fallback-streets', { type: 'image', url: img.url, coordinates: img.coords });
+        map.addLayer(
+          { id: 'fallback-streets', type: 'raster', source: 'fallback-streets', layout: { visibility: baseOk ? 'none' : 'visible' }, paint: { 'raster-opacity': 0.95, 'raster-fade-duration': 0 } },
+          'landuse'
+        );
+      } catch (err) {
+        fallbackAdded = false;
+        reportError('map', 'fallback streets: ' + String((err as Error)?.message ?? err));
+      }
+    };
+    // Fonts first: if the font server is the only thing blocked, our own copy
+    // brings back the whole map. A failed tile doesn't say whether its tiles
+    // or its fonts failed, so ask the font server directly.
+    const useLocalGlyphs = () => {
+      if (localGlyphs || !ready) return;
+      localGlyphs = true;
+      try {
+        map.setGlyphs(LOCAL_GLYPHS);
+        (map.getSource('ofm') as VectorTileSource | undefined)?.setUrl(OFM_URL); // reload tiles that failed on fonts
+      } catch {
+        /* the fallback still covers us */
+      }
+    };
+    let fontCheck: Promise<boolean> | null = null;
+    const fontsReachable = () =>
+      (fontCheck ??= (async () => {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), 3000);
+        try {
+          const r = await fetch(OFM_GLYPHS.replace('{fontstack}', 'Noto Sans Regular').replace('{range}', '0-255'), { signal: ctl.signal });
+          return r.ok;
+        } catch {
+          return false;
+        } finally {
+          clearTimeout(t);
+        }
+      })());
+    const onBaseTrouble = async (why: Exclude<MapIssue, null>) => {
+      if (!(await fontsReachable())) {
+        useLocalGlyphs();
+        // Give the street tiles a moment to come back with our fonts.
+        setTimeout(() => startFallback(why), why === 'slow' ? 0 : 4000);
+      } else {
+        startFallback(why);
+      }
+    };
+    map.on('sourcedata', (e: any) => {
+      if (e.sourceId === 'ofm' && e.tile && !baseOk) {
+        baseOk = true;
+        setIssue(null);
+        showFallback(false);
+      }
+    });
+    map.on('error', (e: any) => {
+      const err = e?.error;
+      const msg = String(err?.message ?? err ?? 'unknown map error');
+      if (err?.name === 'AbortError' || /\babort/i.test(msg)) return; // we cancelled it (reloading the source)
+      console.error('map:', e?.sourceId ?? '', msg);
+      reportError('map', (e?.sourceId ? `[${e.sourceId}] ` : '') + msg + (err?.url ? ` (${String(err.url).slice(0, 120)})` : ''));
+      if (!e?.sourceId && !/openfreemap/i.test(msg)) return;
+      onBaseTrouble('blocked');
+      // One more try later, in case it was a blip.
+      if (e.sourceId === 'ofm' && !retried) {
+        retried = true;
+        setTimeout(() => {
+          if (!destroyed && !baseOk) (map.getSource('ofm') as VectorTileSource | undefined)?.setUrl(OFM_URL);
+        }, 15_000);
+      }
+    });
+    const baseTimer = setTimeout(() => {
+      if (baseOk || destroyed) return;
+      reportError('map', `no street-map tiles after ${BASE_MAP_TIMEOUT / 1000} s`);
+      onBaseTrouble('slow');
+    }, BASE_MAP_TIMEOUT);
+
+    // Our layers go on as soon as the style is parsed, not on 'load' (which
+    // waits for every tile and never comes if the tile server is blocked).
+    map.once('style.load', () => {
       if (destroyed) return;
+      ready = true;
       map.addSource('plots', { type: 'geojson', data: empty() });
       map.addSource('deposits', { type: 'geojson', data: empty() });
       map.addSource('businesses', { type: 'geojson', data: empty() });
       map.addSource('players', { type: 'geojson', data: empty() });
-      map.addSource('me', { type: 'geojson', data: meFeature() });
+      map.addSource('me', { type: 'geojson', data: meFeature(), attribution: OSM_ATTRIBUTION });
       map.addSource('route', { type: 'geojson', data: empty() });
       const heat = trafficImage(city);
       map.addSource('traffic', { type: 'image', url: heat.url, coordinates: heat.coords });
@@ -448,6 +561,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
 
     return () => {
       destroyed = true;
+      clearTimeout(baseTimer);
       cancelAnimationFrame(rafId);
       clearInterval(clock);
       clearInterval(poll);
@@ -466,6 +580,19 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       <div ref={el} className="map" />
       <div ref={nightEl} className="night" />
       <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }}>🛒</div>
+      {issue && (
+        <div className="map-issue" role="status">
+          <strong>{issue === 'slow' ? 'The street map is slow to load.' : 'The street map can’t load on this device.'}</strong>
+          <span>
+            It comes from tiles.openfreemap.org. A VPN, ad blocker or school or work network may be blocking it: allow that site or switch
+            it off, then reload. Until then, play on this simple street map.
+          </span>
+          <span className="row">
+            <button className="btn small" onClick={() => location.reload()}>Reload</button>
+            <button className="btn small ghost" onClick={() => setIssue(null)}>OK</button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { supabase, rpc, BACKEND_READY } from '../lib/supabase';
 import { money } from '../lib/format';
 import { installIconFactory } from '../map/icons';
+import { LOCAL_GLYPHS } from '../map/style';
 import { demandAt } from '../ui/common';
 import '../styles/tutorial.css';
 
@@ -110,7 +111,7 @@ export default function Tutorial() {
       container: el.current!,
       style: {
         version: 8,
-        glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+        glyphs: LOCAL_GLYPHS,
         sources: {
           island: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [islandPolygon()] } } },
           roads: { type: 'geojson', data: { type: 'FeatureCollection', features: ROADS.map((r) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r.map(([x, y]) => p(x, y)) } })) } },

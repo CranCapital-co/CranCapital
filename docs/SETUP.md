@@ -82,6 +82,22 @@ Free tiers cover early testing. Supabase's free plan pauses after a week
 without activity and has a 500 MB database; move to the Pro plan before a
 real launch. Map tiles come from OpenFreeMap (free); consider supporting it.
 
+## When the map is blank or something breaks on a device
+
+The street map comes from OpenFreeMap (tiles.openfreemap.org). If a VPN, ad
+blocker or school or work network blocks that site, the game says so on
+screen and switches to a simple street map drawn from its own city data, so
+it stays playable. Allowing that site (or switching the blocker off) brings
+back the full 3D map.
+
+Players' browsers send error reports to the server (signed-in players only,
+kept 14 days). To see the latest, run in the Supabase SQL editor:
+
+```sql
+select at, kind, message, user_agent, path
+  from game.client_errors order by at desc limit 50;
+```
+
 ## Backups
 
 Supabase Pro takes daily backups. On the free plan, export regularly with

@@ -58,6 +58,7 @@ Direct messages are private between you and the other player. Staff read them on
 
 - Basic logs such as your IP address, browser type and request times.
 - Supabase holds these logs for security and to keep the service working.
+- Error reports: when something breaks in the game on your device (for example, the map fails to load), your browser sends us the error message, your browser type and which game screen you were on, linked to your account. We use them only to fix problems.
 
 ## What we do not collect
 
@@ -121,6 +122,7 @@ We don't share your data with anyone else, unless the law requires it.
 | Account, profile and game data | Until you delete your account |
 | Data after a deletion request | Removed within 30 days of the request |
 | Moderation records, such as warnings and bans | Up to 12 months |
+| Error reports | 14 days |
 | Backups | Roll off within 30 days |
 
 When you delete your account, your personal data is removed. Your businesses stay on the map as abandoned buildings, with no link to you.
