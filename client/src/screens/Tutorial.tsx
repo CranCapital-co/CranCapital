@@ -139,7 +139,7 @@ export default function Tutorial() {
           { id: 'target', type: 'circle', source: 'target', paint: { 'circle-radius': 18, 'circle-color': '#f2c14b', 'circle-opacity': 0.5, 'circle-stroke-color': '#e8a93a', 'circle-stroke-width': 3 } },
           { id: 'peds', type: 'circle', source: 'peds', paint: { 'circle-radius': 3.5, 'circle-color': ['get', 'c'] } },
           { id: 'labels', type: 'symbol', source: 'labels', layout: { 'text-field': ['get', 't'], 'text-font': ['Noto Sans Bold'], 'text-size': 13 }, paint: { 'text-color': '#5a6b63', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } },
-          { id: 'cart', type: 'symbol', source: 'cart', layout: { 'icon-image': 'bz:🛒:1:1:0', 'icon-allow-overlap': true } },
+          { id: 'cart', type: 'symbol', source: 'cart', layout: { 'icon-image': 'bz:cart:1:1:0', 'icon-allow-overlap': true } },
           { id: 'me', type: 'symbol', source: 'me', layout: { 'icon-image': 'av:classic:none:standard', 'icon-allow-overlap': true, 'icon-anchor': 'bottom', 'icon-size': 1.1 } },
         ],
       } as any,

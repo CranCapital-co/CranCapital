@@ -66,6 +66,7 @@ export default function Dashboard({ api }: { api?: any }) {
                   setBusy(false);
                   if (r.spent) {
                     sound.play('buy');
+                    window.dispatchEvent(new CustomEvent('cc:delivery', { detail: { ids: needStock.map((b) => b.id) } }));
                     useGame.getState().toast(`Restocked ${needStock.length} business${needStock.length > 1 ? 'es' : ''} for ${money(r.spent)}.`, 'success');
                   }
                   if (r.failed) useGame.getState().toast(r.failed, 'error');

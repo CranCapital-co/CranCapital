@@ -12,6 +12,7 @@ import { Pools } from './pool';
 import { charParts, accentParts, hatParts, walkerParts, carryParts, groundParts, blobShadow, OUTFITS, SKIN_TONES, CHAR, type Outfit } from './people';
 import { businessModel, propParts, ROOM_KINDS, type BizState, type ModelDef } from './models';
 import { box } from './kit';
+import { Vehicles } from './vehicles';
 import { CrowdSim, type ShopSpot, type Walker } from './crowd3d';
 import type { Quality } from '../lib/settings';
 
@@ -86,6 +87,7 @@ export class WorldLayer implements CustomLayerInterface {
   private gridZ0 = 0;
   private gridAz = -1;
   private biz = new Map<number, BizState3D>();
+  private pendingBuilds = new Set<number>();
   private chars = new Map<string, CharState>();
   private particles: Particle[] = [];
   private last = 0;
@@ -113,6 +115,7 @@ export class WorldLayer implements CustomLayerInterface {
   eventMult = 1;
   extraDraw: ((dt: number) => void)[] = []; // hooks for the living city (lamps, weather, vehicles)
   lastStats = { calls: 0, tris: 0 };
+  vehicles!: Vehicles;
   private tmp = new THREE.Matrix4();
   private tmp2 = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -189,6 +192,7 @@ export class WorldLayer implements CustomLayerInterface {
     };
     this.pools = new Pools(this.scene, this.materials);
     this.scene.add(this.hemi, this.sun, this.sun.target);
+    this.vehicles = new Vehicles(this);
     this.setSun(new THREE.Vector3(-0.5, 0.8, 0.4));
   }
 
@@ -232,7 +236,8 @@ export class WorldLayer implements CustomLayerInterface {
       }
       const room = ROOM_KINDS.has(b.kind);
       const placed = this.placement(b, room, model);
-      const born = cur ? cur.born : this.time > 2 ? this.time : -10;
+      // The build show plays only for a business you just built.
+      const born = cur ? cur.born : this.pendingBuilds.delete(b.id) ? this.time : -10;
       const grew = cur && cur.info.level < b.level ? this.time : cur?.grow ?? -10;
       const spot: ShopSpot | null =
         model.front > 0
@@ -261,26 +266,28 @@ export class WorldLayer implements CustomLayerInterface {
   private placement(b: BizInfo, room: boolean, model: ModelDef) {
     let { gx, gy } = this.latLngToGrid(b.lat, b.lng);
     const scale = room ? ROOM_SCALE : KIND_SCALE[b.kind] ?? 1;
-    if (room && !this.crowd.walkable(gx, gy)) {
-      // The business point is inside its building: walk out to the street.
-      let best: { gx: number; gy: number; d: number } | null = null;
-      for (let r = 3; r <= 45 && !best; r += 3)
-        for (let a = 0; a < 16; a++) {
-          const ang = (a / 16) * Math.PI * 2;
+    if (room) {
+      // Shop dressing stands against its building's front wall, facing the
+      // street. The point may be inside the building (walk out to the
+      // street) or on the pavement outside (walk in to the wall).
+      const inside = !this.crowd.walkable(gx, gy);
+      let found: { gx: number; gy: number; ang: number } | null = null;
+      for (let r = 2; r <= 40 && !found; r += 2)
+        for (let a = 0; a < 24; a++) {
+          const ang = (a / 24) * Math.PI * 2;
           const x = gx + Math.cos(ang) * r;
           const y = gy + Math.sin(ang) * r;
-          if (this.crowd.walkable(x, y)) {
-            best = { gx: x, gy: y, d: r };
+          if (this.crowd.walkable(x, y) === inside) {
+            // inside: first street point, facing out along ang.
+            // outside: first wall point; stand just before it, facing back.
+            found = inside ? { gx: x, gy: y, ang } : { gx: x - Math.cos(ang) * 2.5, gy: y - Math.sin(ang) * 2.5, ang: ang + Math.PI };
             break;
           }
         }
-      if (best) {
-        const ang = Math.atan2(best.gy - gy, best.gx - gx);
-        // Stand just inside the street edge, backed onto the wall.
-        gx = best.gx - Math.cos(ang) * 1.5;
-        gy = best.gy - Math.sin(ang) * 1.5;
-        const pos = this.gridToLocal(gx, gy);
-        return { pos, yaw: WorldLayer.yawOf(ang), front: { gx: Math.cos(ang), gy: Math.sin(ang) }, gx, gy, scale };
+      if (found) {
+        // Snap the face to the nearest right angle if the street is straight there.
+        const pos = this.gridToLocal(found.gx, found.gy);
+        return { pos, yaw: WorldLayer.yawOf(found.ang), front: { gx: Math.cos(found.ang), gy: Math.sin(found.ang) }, gx: found.gx, gy: found.gy, scale };
       }
     }
     let bestA = 0;
@@ -332,6 +339,16 @@ export class WorldLayer implements CustomLayerInterface {
     this.onPaid?.(b.info, w.shop!.amount, this.screenOf(new THREE.Vector3(b.pos.x, 6, b.pos.z)));
   }
 
+  // A van delivers to one of your businesses; a ship leaves your port.
+  delivery(businessId: number) {
+    const b = this.biz.get(businessId);
+    if (b) this.vehicles.delivery(b.pos, b.yaw);
+  }
+  shipOut(businessId: number) {
+    const b = this.biz.get(businessId);
+    if (b) this.vehicles.ship(b.pos, b.yaw);
+  }
+
   // Player character moments: cheer for a big moment, wave hello.
   emote(anim: Anim, key = 'me') {
     const c = this.chars.get(key);
@@ -345,6 +362,7 @@ export class WorldLayer implements CustomLayerInterface {
   celebrateBuild(businessId: number) {
     const b = this.biz.get(businessId);
     if (b) b.born = this.time;
+    else this.pendingBuilds.add(businessId); // starts when it arrives on the map
   }
 
   // Tap picking: the business whose model is under the point, if any.
@@ -473,8 +491,10 @@ export class WorldLayer implements CustomLayerInterface {
       this.pools.get('b:' + b.model.key, () => b.model.base).add(this.tmp);
       if (b.model.glow) this.pools.get('g:' + b.model.key, () => b.model.glow!, 'glow').add(this.tmp);
       const r = b.model.radius * b.scale;
-      this.tmp2.compose(this.v.set(b.pos.x, 0, b.pos.z), this.q, this.sc.set(r, 1, r * 0.8));
-      shadow.add(this.tmp2);
+      if (!ROOM_KINDS.has(b.info.kind)) {
+        this.tmp2.compose(this.v.set(b.pos.x, 0, b.pos.z), this.q, this.sc.set(r, 1, r * 0.8));
+        shadow.add(this.tmp2);
+      }
       if (b.info.mine) {
         this.col.set('#f2c14b');
         const rr = (r / 1.85) * 1.05;
@@ -585,6 +605,7 @@ export class WorldLayer implements CustomLayerInterface {
       c.seen = this.time;
     }
     for (const [key, c] of this.chars) {
+      if (key === 'me' && this.vehicles?.hideMe) continue; // riding in a taxi
       // Glide toward the latest position instead of jumping.
       const dx = c.target.x - c.pos.x;
       const dz = c.target.z - c.pos.z;

@@ -231,6 +231,7 @@ export default function World() {
                 x.starter_stock ? 'Your cart is open! We put some starter stock in your storage.' : 'Your cart is open!'
               );
               if (r) {
+                window.dispatchEvent(new CustomEvent('cc:built', { detail: { id: r.business_id } }));
                 setCartPrompt(null);
                 set({ mode: { kind: 'walk' } });
                 const fresh = await rpc<Me>('get_me');
@@ -263,7 +264,14 @@ export default function World() {
               onClick={async () => {
                 const r = await act(() => rpc<any>('taxi', { p_lat: taxi.lat, p_lng: taxi.lng }), (x) => `Taxi ride: ${money(x.cost)}`);
                 if (r) {
-                  set({ pos: { lat: taxi.lat, lng: taxi.lng }, walkingTo: null, mode: { kind: 'walk' } });
+                  const from = useGame.getState().pos;
+                  const to = { lat: taxi.lat, lng: taxi.lng };
+                  set({ walkingTo: null, mode: { kind: 'walk' } });
+                  setTaxi(null);
+                  // The taxi pulls up and you get in before it drives you there.
+                  if (from) window.dispatchEvent(new CustomEvent('cc:taxi', { detail: { from, to } }));
+                  await new Promise((res) => setTimeout(res, (window as any).__ccWorld ? 2000 : 0));
+                  set({ pos: to });
                   const fresh = await rpc<Me>('get_me');
                   set({ me: fresh });
                 }

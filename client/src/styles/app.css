@@ -292,3 +292,6 @@ details summary { cursor: pointer; color: var(--ink-2); }
 .debug-overlay { position: absolute; z-index: 30; left: 10px; top: calc(env(safe-area-inset-top) + 130px); margin: 0; padding: 8px 10px; background: rgba(0,0,0,.72); color: #9fffa8; font: 12px/1.35 ui-monospace, Menlo, monospace; border-radius: 8px; pointer-events: none; white-space: pre; }
 .sale-pop { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(0,0,0,.15); font-variant-numeric: tabular-nums; }
 .sale-pop.big { font-size: 18px; color: #b07a10; background: #fff4d1; border: 2px solid #e8b23a; }
+.biz-thumb { flex: none; display: inline-block; vertical-align: middle; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,.15)); }
+.mini-view { height: 170px; margin: -6px -4px 4px; border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 20%, var(--sky-soft), var(--bg-2)); }
+.mini-view canvas { display: block; }

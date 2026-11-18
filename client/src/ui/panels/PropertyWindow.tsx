@@ -117,6 +117,7 @@ function BuildingView({ id }: { id: number }) {
                     const pos = useGame.getState().pos!;
                     const r = await act(() => rpc<any>('rent_room', { p_building: b.id, p_kind: kind, p_name: name, p_lat: pos.lat, p_lng: pos.lng }), 'Room rented! Now fit it out and hire staff.');
                     if (r) {
+                      window.dispatchEvent(new CustomEvent('cc:built', { detail: { id: r.business_id } }));
                       await refreshMe();
                       open('business', { id: r.business_id });
                     }
@@ -298,7 +299,7 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
               disabled={!sel || me.tier < sel.tier || (sel.produces === 'crop' && !option)}
               onClick={async () => {
                 const r = await act(() => rpc<any>('build_on_plot', { p_city: city, p_px: px, p_py: py, p_kind: kind, p_name: name, p_option: option || null }), `${sel?.name} built!`);
-                if (r) { await done(); open('business', { id: r.business_id }); }
+                if (r) { window.dispatchEvent(new CustomEvent('cc:built', { detail: { id: r.business_id } })); await done(); open('business', { id: r.business_id }); }
               }}
             >
               Build for {money(sel?.cost ?? 0)}

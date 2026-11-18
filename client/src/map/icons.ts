@@ -90,21 +90,30 @@ export function avatarDataUrl(skin: string, ring: string, size = 56, ringStyle =
   return c.toDataURL();
 }
 
-function businessIcon(icon: string, color: string, mine: boolean, dim: boolean) {
-  const size = 40;
+// A round badge in the tier colour (gold rim if it's yours) holding a
+// picture of the business's 3D model once that has been rendered.
+function businessIcon(color: string, mine: boolean, dim: boolean, pic?: HTMLImageElement) {
+  const size = 44;
   const { c, ctx } = canvas(size);
   const r = size / 2;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath(); ctx.arc(r, r + 1.5, r - 3, 0, 7); ctx.fill();
-  ctx.fillStyle = dim ? '#8c918f' : color;
+  ctx.fillStyle = dim ? '#8c918f' : '#fffdf8';
   ctx.beginPath(); ctx.arc(r, r, r - 3, 0, 7); ctx.fill();
-  ctx.lineWidth = mine ? 4 : 2.5;
-  ctx.strokeStyle = mine ? '#f2c14b' : '#ffffff';
+  ctx.lineWidth = mine ? 4.5 : 3;
+  ctx.strokeStyle = mine ? '#f2c14b' : color;
   ctx.stroke();
-  ctx.font = `${size * 0.46}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(icon, r, r + 1);
+  if (pic) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(r, r, r - 5, 0, 7); ctx.clip();
+    if (dim) ctx.globalAlpha = 0.55;
+    ctx.drawImage(pic, 4, 4, size - 8, size - 8);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(r, r, r * 0.32, 0, 7); ctx.fill();
+  }
+  void c;
   return ctx.getImageData(0, 0, size * DPR, size * DPR);
 }
 
@@ -114,8 +123,20 @@ export function installIconFactory(map: MLMap) {
     const id = e.id as string;
     if (map.hasImage(id)) return;
     if (id.startsWith('bz:')) {
-      const [, icon, tier, mine, dim] = id.split(':');
-      map.addImage(id, businessIcon(icon, BUSINESS_COLORS[Number(tier)] ?? '#555', mine === '1', dim === '1'), { pixelRatio: DPR });
+      const [, kind, tier, mine, dim] = id.split(':');
+      const color = BUSINESS_COLORS[Number(tier)] ?? '#555';
+      map.addImage(id, businessIcon(color, mine === '1', dim === '1'), { pixelRatio: DPR });
+      import('../world3d/thumbs')
+        .then((m) => m.businessThumb(kind, Number(tier) || 1))
+        .then((url) => {
+          if (!url) return;
+          const img = new Image();
+          img.onload = () => {
+            if (map.hasImage(id)) map.updateImage(id, businessIcon(color, mine === '1', dim === '1', img));
+          };
+          img.src = url;
+        })
+        .catch(() => {});
     } else if (id.startsWith('av:')) {
       const [, skin, ring, style] = id.split(':');
       const { ctx } = canvas(48);

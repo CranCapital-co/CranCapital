@@ -227,7 +227,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
             return {
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [x.lng, x.lat] },
-              properties: { id: x.id, name: mapText(x.name), mine: x.mine, kind: x.kind, owner: x.owner_name, level: x.level, icon: `bz:${t?.icon ?? '🏪'}:${t?.tier ?? 1}:${x.mine ? 1 : 0}:${dim ? 1 : 0}` },
+              properties: { id: x.id, name: mapText(x.name), mine: x.mine, kind: x.kind, owner: x.owner_name, level: x.level, icon: `bz:${x.kind}:${t?.tier ?? 1}:${x.mine ? 1 : 0}:${dim ? 1 : 0}` },
             };
           }),
         });
@@ -675,6 +675,41 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       if (map.getZoom() >= 14 && map.getBounds().contains([d.lng, d.lat])) sound.play('sale', { amount: d.revenue });
     };
     window.addEventListener('cc:sales', onSales);
+    // Something new was built, or levelled up: show it.
+    const onBuilt = (e: Event) => {
+      const id = (e as CustomEvent).detail?.id;
+      if (!id) return;
+      world?.celebrateBuild(id);
+      sound.play('hammer');
+      setTimeout(() => sound.play('pop'), 2000);
+      refreshData();
+    };
+    const onLevel = () => {
+      sound.play('levelup');
+      refreshData();
+    };
+    window.addEventListener('cc:built', onBuilt);
+    const onDelivery = (e: Event) => ((e as CustomEvent).detail?.ids ?? []).forEach((id: number) => world?.delivery(id));
+    const onShip = (e: Event) => world?.shipOut((e as CustomEvent).detail?.id);
+    const onTaxi = (e: Event) => {
+      const { from, to } = (e as CustomEvent).detail;
+      if (!world || map.getZoom() < 15.5) {
+        map.flyTo({ center: [to.lng, to.lat], duration: 1200 });
+        return;
+      }
+      world.vehicles.taxi(from, to, () => {});
+      setTimeout(() => {
+        map.flyTo({ center: [to.lng, to.lat], zoom: Math.max(map.getZoom(), 17), duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1600 });
+        setTimeout(() => {
+          if (world) world.vehicles.hideMe = false;
+          sound.play('pop');
+        }, 1700);
+      }, 2000);
+    };
+    window.addEventListener('cc:delivery', onDelivery);
+    window.addEventListener('cc:ship', onShip);
+    window.addEventListener('cc:taxi', onTaxi);
+    window.addEventListener('cc:levelup', onLevel);
 
     // Night falls with the city's local time; crowds follow the clock.
     const tick = () => {
@@ -712,6 +747,11 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       unsubPresence();
       unsubSettings();
       window.removeEventListener('cc:sales', onSales);
+      window.removeEventListener('cc:built', onBuilt);
+      window.removeEventListener('cc:delivery', onDelivery);
+      window.removeEventListener('cc:ship', onShip);
+      window.removeEventListener('cc:taxi', onTaxi);
+      window.removeEventListener('cc:levelup', onLevel);
       crowd.destroy();
       map.remove();
       mapRef.current = null;

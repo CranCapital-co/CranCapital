@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+
+const MiniView = lazy(() => import('../../world3d/MiniView'));
 import { rpc } from '../../lib/supabase';
 import { useGame, act, catalog, goodName, goodIcon, cityName } from '../../lib/store';
 import { money, unitPrice, hourLabel, num, ago } from '../../lib/format';
@@ -45,6 +47,9 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
   return (
     <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
+        <Suspense fallback={<div className="mini-view" />}>
+          <MiniView kind={b.kind} tier={catalog().business_types.find((x) => x.id === b.kind)?.tier ?? 1} level={b.level} status={b.status} fitout={b.fitout} />
+        </Suspense>
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{t.name}</span>
           <span className="chip">Level {b.level}</span>
@@ -237,7 +242,10 @@ function StockTab({ b }: { b: Business }) {
               if (!r) break;
               spent += r.value;
             }
-            if (spent) useGame.getState().toast(`Restocked for ${money(spent)} from the exchange.`, 'success');
+            if (spent) {
+              useGame.getState().toast(`Restocked for ${money(spent)} from the exchange.`, 'success');
+              window.dispatchEvent(new CustomEvent('cc:delivery', { detail: { ids: [b.id] } }));
+            }
             await reload();
             await refreshMe();
           }}
@@ -499,7 +507,7 @@ function ShippingTab({ b }: { b: Business }) {
       )}
       <button className="btn" disabled={!good || qty <= 0} onClick={async () => {
         const r = await act(() => rpc<any>('ship', { p_port: b.id, p_good: good, p_qty: qty, p_to: to, p_kind: kind }), (x) => `Ship sailed: arrives in ${x.arrive_minutes} minutes. Freight ${money(x.freight)}.`);
-        if (r) { reload(); refreshMe(); }
+        if (r) { window.dispatchEvent(new CustomEvent('cc:ship', { detail: { id: b.id } })); reload(); refreshMe(); }
       }}>
         Ship it
       </button>
@@ -588,7 +596,7 @@ function ManageTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => void
             {t.placement === 'room' && 'Serve 10% more customers, look more appealing, and add a menu slot.'}
             {t.placement !== 'street' && t.placement !== 'room' && 'Produce 80% more of the base rate (more crew and running costs too).'}
           </p>
-          <button className="btn gold" onClick={async () => { if (await act(() => rpc('upgrade_business', { p_id: b.id }), `Upgraded to level ${b.level + 1}!`)) onSaved(); }}>
+          <button className="btn gold" onClick={async () => { if (await act(() => rpc('upgrade_business', { p_id: b.id }), `Upgraded to level ${b.level + 1}!`)) { window.dispatchEvent(new CustomEvent('cc:levelup', { detail: { id: b.id, level: b.level + 1 } })); onSaved(); } }}>
             Upgrade for {money(b.upgrade_cost)}
           </button>
         </div>
@@ -625,6 +633,9 @@ function ShopFront({ b }: { b: Business }) {
   return (
     <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
+        <Suspense fallback={<div className="mini-view" />}>
+          <MiniView kind={b.kind} tier={catalog().business_types.find((x) => x.id === b.kind)?.tier ?? 1} level={b.level} status={b.status} fitout={b.fitout} />
+        </Suspense>
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{b.type_name}</span>
           <span className="chip">Level {b.level}</span>

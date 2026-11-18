@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { BUSINESS_ICON, FITOUT_ICON, GOOD_ICONS, UI_ICONS, spriteMarkup } from './icons';
 import { catalog } from '../lib/store';
 import { BUSINESS_COLORS } from '../map/icons';
@@ -38,9 +38,29 @@ export function GoodIcon({ id, size = 22 }: { id: string; size?: number }) {
 
 // A business type's icon in its tier colour (a picture of its 3D model once
 // those are rendered; see world3d/thumbnails).
-export function BizIcon({ kind, tier, size = 22 }: { kind: string; tier?: number; size?: number }) {
-  return <Icon name={BUSINESS_ICON[kind] ?? 'shop'} size={size} accent={tier ? BUSINESS_COLORS[tier] : undefined} />;
+export function BizIcon({ kind, tier, size = 22, level = 1 }: { kind: string; tier?: number; size?: number; level?: number }) {
+  const t = tier ?? catalog()?.business_types.find((x) => x.id === kind)?.tier ?? 1;
+  const [url, setUrl] = useState<string | null>(() => thumbCache.get(`${kind}:${t}:${level}`) ?? null);
+  useEffect(() => {
+    if (url) return;
+    let alive = true;
+    // A picture of the 3D model (Three.js loads in the background).
+    import('../world3d/thumbs')
+      .then((m) => m.businessThumb(kind, t, level))
+      .then((u) => {
+        if (!u) return;
+        thumbCache.set(`${kind}:${t}:${level}`, u);
+        if (alive) setUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [kind, t, level, url]);
+  if (url) return <img className="biz-thumb" src={url} width={size} height={size} alt="" aria-hidden draggable={false} />;
+  return <Icon name={BUSINESS_ICON[kind] ?? 'shop'} size={size} accent={BUSINESS_COLORS[t]} />;
 }
+const thumbCache = new Map<string, string>();
 
 // A menu item shows the good it's mostly made from (salad: lettuce, sofa: furniture).
 export function MenuIcon({ id, size = 22 }: { id: string; size?: number }) {
