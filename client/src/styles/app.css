@@ -289,3 +289,6 @@ details summary { cursor: pointer; color: var(--ink-2); }
 .choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-solid); cursor: pointer; color: var(--ink); }
 .choice.on { border-color: var(--brand-2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-2) 30%, transparent); }
 .dock .primary.on { background: var(--brand-2); color: #fff; }
+.debug-overlay { position: absolute; z-index: 30; left: 10px; top: calc(env(safe-area-inset-top) + 130px); margin: 0; padding: 8px 10px; background: rgba(0,0,0,.72); color: #9fffa8; font: 12px/1.35 ui-monospace, Menlo, monospace; border-radius: 8px; pointer-events: none; white-space: pre; }
+.sale-pop { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(0,0,0,.15); font-variant-numeric: tabular-nums; }
+.sale-pop.big { font-size: 18px; color: #b07a10; background: #fff4d1; border: 2px solid #e8b23a; }

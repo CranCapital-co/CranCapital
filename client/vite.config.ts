@@ -14,6 +14,7 @@ export default defineConfig(({ command }) => ({
       output: {
         manualChunks: {
           maplibre: ['maplibre-gl'],
+          three: ['three'],
           supabase: ['@supabase/supabase-js'],
         },
       },

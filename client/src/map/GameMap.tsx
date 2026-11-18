@@ -10,7 +10,10 @@ import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, 
 import { onPresence, track, type Presence } from '../lib/realtime';
 import { localHour, money, ringFor } from '../lib/format';
 import { reportError } from '../lib/errors';
-import { reducedMotion } from '../lib/settings';
+import { reducedMotion, useSettings } from '../lib/settings';
+import type { WorldLayer, CharInfo } from '../world3d/WorldLayer';
+import { RING_COLORS } from '../lib/format';
+import { sound } from '../audio/sound';
 
 const WALK_SPEED = 45; // metres per second on screen (server allows up to 60)
 const BASE_MAP_TIMEOUT = 10_000; // ms before we stop waiting for street-map tiles
@@ -53,6 +56,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   const ghostEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [issue, setIssue] = useState<MapIssue>(null);
+  const debugEl = useRef<HTMLPreElement>(null);
+  const debug = /[?&#]debug\b|[?&]debug=/.test(location.search + location.hash);
   const cbs = useRef({ onArrive, onPlace, onTaxi });
   cbs.current = { onArrive, onPlace, onTaxi };
 
@@ -65,8 +70,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       container: el.current!,
       style: mapStyle(dark() ? DARK : LIGHT),
       center: [startPos.lng, startPos.lat],
-      zoom: 16.4,
-      pitch: 52,
+      zoom: 17.3, // on foot: close in and tilted, like a model city on a table
+      pitch: 55,
       bearing: -12,
       maxPitch: 70,
       minZoom: 12.5,
@@ -76,6 +81,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         [m.bbox[2] + 0.03, m.bbox[3] + 0.02],
       ],
       attributionControl: false,
+      antialias: useSettings.getState().quality !== 'saver',
+      pixelRatio: Math.min(window.devicePixelRatio || 1, useSettings.getState().quality === 'high' ? 2 : useSettings.getState().quality === 'medium' ? 1.5 : 1),
       dragRotate: true,
       doubleClickZoom: false, // a tap walks; pinch or use the buttons to zoom
     });
@@ -91,6 +98,9 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     let stateIds: number[] = [];
     let destroyed = false;
     let ready = false; // our sources and layers are on the map
+    let world: WorldLayer | null = null; // the 3D layer, once loaded
+    let follow = true; // the camera eases after you as you walk
+    let lastBiz: any[] = [];
 
     const setGeo = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 
@@ -152,6 +162,12 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       const f = stepM / d;
       pos = { lat: pos.lat + (target.lat - pos.lat) * f, lng: pos.lng + (target.lng - pos.lng) * f };
       setGeo('me', meFeature());
+      if (world && follow && !map.isMoving()) {
+        // Ease after the walker so they stay in view.
+        const c = map.getCenter();
+        const k = Math.min(1, dt * 2.2);
+        map.jumpTo({ center: [c.lng + (pos.lng - c.lng) * k, c.lat + (pos.lat - c.lat) * k] });
+      }
       setGeo('route', { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[pos.lng, pos.lat], [target.lng, target.lat]] } }] });
       if (st.me) track(presence(true));
       report();
@@ -168,6 +184,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       if (s.mode !== prev.mode) applyMode();
       if (s.selection.building !== prev.selection.building) selectBuilding(s.selection.building ?? null);
       if (s.refreshKey !== prev.refreshKey) refreshData();
+      if (s.walkingTo && s.walkingTo !== prev.walkingTo) follow = true;
     });
 
     // ---------- other players ----------
@@ -182,6 +199,11 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         });
       });
       setGeo('players', { type: 'FeatureCollection', features: feats });
+      world?.setPlayers(
+        [...others.values()]
+          .filter((p) => !p.in)
+          .map((p): CharInfo => ({ key: 'p:' + p.no, lat: p.lat, lng: p.lng, skin: p.s, ring: RING_COLORS[p.r] ?? RING_COLORS.none, double: p.rs === 'double', skinTone: p.no % 6 }))
+      );
     });
 
     // ---------- game data in view ----------
@@ -209,6 +231,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
             };
           }),
         });
+        lastBiz = biz.map((x) => ({ id: x.id, kind: x.kind, tier: types.find((tt) => tt.id === x.kind)?.tier ?? 1, level: x.level, status: x.status, mine: x.mine, lat: x.lat, lng: x.lng, name: x.name, crop: x.crop, fill: x.fill, resource: x.resource }));
+        world?.setBusinesses(lastBiz);
         for (const id of stateIds) map.setFeatureState({ source: 'ofm', sourceLayer: 'building', id }, { status: null });
         stateIds = [];
         for (const x of blds) {
@@ -337,7 +361,12 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         st.open('property', { plot: { city: m.id, px, py } });
         return;
       }
-      // Walk mode: avatars, businesses, buildings, or walk.
+      // Walk mode: a 3D business model, avatars, badges, buildings, or walk.
+      const hit3d = world?.pick(e.point.x, e.point.y);
+      if (hit3d) {
+        st.open('business', { id: hit3d.id });
+        return;
+      }
       // Icons get a generous hit area; the nearest one to the tap wins.
       const pad = touch ? 22 : 8;
       const near = map.queryRenderedFeatures(
@@ -528,6 +557,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       refreshData();
       rafId = requestAnimationFrame(step);
       (window as any).__ccMap = map; // handy for debugging and browser tests
+      loadWorld();
       onReady?.({
         map,
         flyTo: (lat, lng, zoom) => map.flyTo({ center: [lng, lat], zoom: zoom ?? Math.max(map.getZoom(), 16.2), duration: 1200 }),
@@ -551,18 +581,98 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       });
     });
     map.on('moveend', () => refreshData());
+    map.on('dragstart', () => (follow = false));
+
+    // ---------- the 3D world ----------
+    // Loaded separately (Three.js is big), only on the play screen. If it
+    // can't start (an old browser without WebGL 2), the 2D map carries on.
+    const loadWorld = async () => {
+      try {
+        await loadWalk(city);
+        const { WorldLayer } = await import('../world3d/WorldLayer');
+        const { loadModelOverrides } = await import('../world3d/gltf');
+        await loadModelOverrides();
+        if (destroyed) return;
+        const w = new WorldLayer(city, () => {
+          const me = useGame.getState().me;
+          if (!me) return null;
+          return { key: 'me', lat: pos.lat, lng: pos.lng, skin: me.skin, ring: RING_COLORS[ringFor(me.net_worth)] ?? RING_COLORS.none, double: me.ring_style === 'double', skinTone: me.player_no % 6, moving: !!useGame.getState().walkingTo };
+        });
+        const before = map.getLayer('water-label') ? 'water-label' : undefined;
+        map.addLayer(w, before);
+        world = w;
+        (window as any).__ccWorld = w;
+        const settings = useSettings.getState();
+        w.autoQuality = settings.graphics === 'auto';
+        w.setQuality(settings.quality);
+        w.onQuality = (q) => useSettings.getState().setQuality(q);
+        w.onPaid = (b, amount, screen) => {
+          salePop(b.lat, b.lng, amount);
+          sound.play('sale', { amount });
+          if (screen) window.dispatchEvent(new CustomEvent('cc:coin', { detail: { x: screen.x, y: screen.y, amount } }));
+        };
+        w.setBusinesses(lastBiz);
+        crowd.setEnabled(false); // the 3D crowd replaces the dots
+        // Badges hand over to models as you zoom in; names float above heads.
+        map.setPaintProperty('me', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
+        map.setPaintProperty('players', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
+        map.setLayoutProperty('players', 'text-offset', ['interpolate', ['linear'], ['zoom'], 15, ['literal', [0, -1.8]], 18, ['literal', [0, -5.5]]]);
+        map.setLayoutProperty('players', 'text-anchor', 'bottom');
+        map.setPaintProperty('businesses', 'icon-opacity', ['step', ['zoom'], 1, 15.5, 0]);
+        map.setLayoutProperty('businesses', 'text-offset', ['interpolate', ['linear'], ['zoom'], 15.5, ['literal', [0, 1.6]], 16, ['literal', [0, -2.5]], 18, ['literal', [0, -6]]]);
+        map.setLayoutProperty('businesses', 'text-anchor', ['step', ['zoom'], 'top', 16, 'bottom']);
+        map.triggerRepaint();
+      } catch (err) {
+        reportError('3d', 'world layer failed: ' + String((err as Error)?.message ?? err));
+      }
+    };
+    const unsubSettings = useSettings.subscribe((s2, prev) => {
+      if (!world) return;
+      if (s2.graphics !== prev.graphics) {
+        world.autoQuality = s2.graphics === 'auto';
+        if (s2.graphics !== 'auto') world.setQuality(s2.graphics);
+      }
+    });
     map.on('mouseenter', 'businesses', () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', 'businesses', () => applyMode());
 
-    // Sales pop up over your businesses.
+    // Sales: in 3D, customers walk up and the money pops when they pay;
+    // otherwise the amount pops straight away.
+    const pops = new Map<number, { mk: maplibregl.Marker; total: number; t: any; el: HTMLDivElement }>();
+    const salePop = (lat: number, lng: number, amount: number, key = Math.round(lat * 1e5) * 1e6 + Math.round(lng * 1e5)) => {
+      if (map.getZoom() < 14) return;
+      // Labels above the same business stack and merge.
+      const cur = pops.get(key);
+      if (cur) {
+        cur.total += amount;
+        cur.el.textContent = `+${money(cur.total)}`;
+        cur.el.classList.toggle('big', cur.total >= 50000);
+        cur.el.style.animation = 'none';
+        void cur.el.offsetWidth;
+        cur.el.style.animation = '';
+        clearTimeout(cur.t);
+        cur.t = setTimeout(() => {
+          cur.mk.remove();
+          pops.delete(key);
+        }, 2400);
+        return;
+      }
+      const div = document.createElement('div');
+      div.className = 'sale-pop' + (amount >= 50000 ? ' big' : '');
+      div.textContent = `+${money(amount)}`;
+      const mk = new maplibregl.Marker({ element: div, anchor: 'bottom', offset: [0, -40] }).setLngLat([lng, lat]).addTo(map);
+      const t = setTimeout(() => {
+        mk.remove();
+        pops.delete(key);
+      }, 2400);
+      pops.set(key, { mk, total: amount, t, el: div });
+    };
     const onSales = (e: Event) => {
       const d = (e as CustomEvent).detail;
-      if (!d?.lat || map.getZoom() < 14) return;
-      const div = document.createElement('div');
-      div.className = 'sale-pop';
-      div.textContent = `+${money(d.revenue)}`;
-      const mk = new maplibregl.Marker({ element: div, anchor: 'bottom' }).setLngLat([d.lng, d.lat]).addTo(map);
-      setTimeout(() => mk.remove(), 2400);
+      if (!d?.lat) return;
+      if (world?.sale(d.business, d.sold ?? 1, d.revenue ?? 0)) return;
+      salePop(d.lat, d.lng, d.revenue ?? 0);
+      if (map.getZoom() >= 14 && map.getBounds().contains([d.lng, d.lat])) sound.play('sale', { amount: d.revenue });
     };
     window.addEventListener('cc:sales', onSales);
 
@@ -572,11 +682,23 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       const h = localHour(m.tz, now) + now.getMinutes() / 60;
       if (nightEl.current) nightEl.current.style.opacity = String(nightAlpha(h));
       const prefs = useGame.getState().me?.prefs ?? {};
-      crowd.setEnabled(!prefs.hide_crowds);
+      crowd.setEnabled(!prefs.hide_crowds && !world);
       crowd.setDensity(crowdLevel(Math.floor(h)));
+      if (world) world.hourLevel = prefs.hide_crowds ? 0.05 : crowdLevel(Math.floor(h));
+      sound.setAmbience({ hour: h, zoom: map.getZoom() });
     };
     tick();
     const clock = setInterval(tick, 60_000);
+    // ?debug: frame rate, draw calls, triangles and memory.
+    const dbg = debug
+      ? setInterval(() => {
+          if (!debugEl.current) return;
+          const st = world?.stats();
+          debugEl.current.textContent = st
+            ? `fps ${st.fps}  ${st.quality}\ncalls ${st.calls}  tris ${(st.tris / 1000).toFixed(1)}k\nwalkers ${st.walkers}  biz ${st.businesses}  players ${st.players}\ngeometries ${st.geometries}${st.mem != null ? `  heap ${st.mem} MB` : ''}\nzoom ${map.getZoom().toFixed(2)}  pitch ${map.getPitch().toFixed(0)}`
+            : '3D layer not loaded';
+        }, 500)
+      : 0;
     const poll = setInterval(refreshData, 20_000);
 
     return () => {
@@ -584,9 +706,11 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       clearTimeout(baseTimer);
       cancelAnimationFrame(rafId);
       clearInterval(clock);
+      clearInterval(dbg);
       clearInterval(poll);
       unsubPos();
       unsubPresence();
+      unsubSettings();
       window.removeEventListener('cc:sales', onSales);
       crowd.destroy();
       map.remove();
@@ -599,7 +723,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     <div className="map-wrap">
       <div ref={el} className="map" />
       <div ref={nightEl} className="night" />
-      <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }}>🛒</div>
+      <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }} />
+      {debug && <pre ref={debugEl} className="debug-overlay" />}
       {issue && (
         <div className="map-issue" role="status">
           <strong>{issue === 'slow' ? 'The street map is slow to load.' : 'The street map can’t load on this device.'}</strong>
