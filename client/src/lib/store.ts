@@ -1,10 +1,21 @@
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import type { Catalog, Me } from './types';
+import { sound } from '../audio/sound';
 
 export type WindowId =
   | 'businesses' | 'business' | 'property' | 'build' | 'market' | 'bank' | 'inventory' | 'community'
-  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod';
+  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod'
+  | 'empire' | 'people' | 'more';
+
+// Windows that now live as tabs inside the five dock windows.
+const TAB_HOME: Partial<Record<WindowId, [WindowId, string]>> = {
+  businesses: ['empire', 'businesses'],
+  inventory: ['empire', 'storage'],
+  bank: ['empire', 'bank'],
+  community: ['people', 'chat'],
+  leaderboard: ['people', 'leaders'],
+};
 
 export type Mode =
   | { kind: 'walk' }
@@ -27,6 +38,12 @@ interface State {
   needsProfile: boolean;
   catalog: Catalog | null;
   win: OpenWindow | null;
+  // Windows opened on top of each other (business -> a good on the market):
+  // Back returns to the one underneath.
+  stack: OpenWindow[];
+  // How much of the map the open sheet covers (px), so the camera can keep
+  // what you're looking at in view.
+  inset: { right: number; bottom: number };
   mode: Mode;
   selection: Selection;
   toasts: Toast[];
@@ -37,6 +54,7 @@ interface State {
   refreshKey: number; // bump to make open windows reload
   set: (p: Partial<State>) => void;
   open: (id: WindowId, params?: any) => void;
+  back: () => void;
   close: () => void;
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
@@ -51,6 +69,8 @@ export const useGame = create<State>((set, get) => ({
   needsProfile: false,
   catalog: null,
   win: null,
+  stack: [],
+  inset: { right: 0, bottom: 0 },
   mode: { kind: 'walk' },
   selection: {},
   toasts: [],
@@ -60,10 +80,28 @@ export const useGame = create<State>((set, get) => ({
   inside: null,
   refreshKey: 0,
   set: (p) => set(p),
-  open: (id, params) => set({ win: { id, params } }),
-  close: () => set({ win: null, selection: {} }),
+  open: (id, params) => {
+    const home = TAB_HOME[id];
+    const w: OpenWindow = home ? { id: home[0], params: { tab: home[1], inner: params } } : { id, params };
+    const stack = get().stack;
+    const top = stack[stack.length - 1];
+    if (!top) sound.play('open');
+    // Re-opening the same kind of window replaces it; anything else stacks.
+    const next = top && top.id === w.id ? [...stack.slice(0, -1), w] : [...stack, w].slice(-8);
+    set({ win: w, stack: next });
+  },
+  back: () => {
+    const stack = get().stack.slice(0, -1);
+    if (!stack.length) return get().close();
+    set({ win: stack[stack.length - 1], stack });
+  },
+  close: () => {
+    if (get().win) sound.play('close');
+    set({ win: null, stack: [], selection: {}, inset: { right: 0, bottom: 0 } });
+  },
   toast: (text, kind = 'info') => {
     const id = ++toastId;
+    if (kind === 'error') sound.play('error');
     set({ toasts: [...get().toasts, { id, kind, text }].slice(-4) });
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 6500 : 4000);
   },

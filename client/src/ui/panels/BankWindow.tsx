@@ -10,7 +10,7 @@ type Tab = 'balance' | 'loans' | 'shares';
 export default function BankWindow({ params }: { params?: { tab?: Tab } }) {
   const [tab, setTab] = useState<Tab>(params?.tab ?? 'balance');
   return (
-    <Window title="Bank" icon="🏦">
+    <Window title="Bank" icon="bank">
       <div className="stack">
         <Tabs tabs={[['balance', 'Balance'], ['loans', 'Loans'], ['shares', 'Shares']]} value={tab} onChange={setTab} />
         {tab === 'balance' && <Balance />}
@@ -161,7 +161,7 @@ function Shares() {
   const sel = data.companies.find((c: any) => c.symbol === sym);
   return (
     <div className="stack">
-      {data.companies.length === 0 ? <Empty icon="🔔" title="No public companies yet">Tier-6 players can take their company public here.</Empty> : (
+      {data.companies.length === 0 ? <Empty icon="bell" title="No public companies yet">Tier-6 players can take their company public here.</Empty> : (
         <table className="list">
           <thead><tr><th>Company</th><th className="r">Price</th><th className="r">You hold</th></tr></thead>
           <tbody>

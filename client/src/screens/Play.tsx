@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
+import { sound } from '../audio/sound';
+import { useIncome } from '../lib/income';
 import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY, AUTH_ERROR } from '../lib/supabase';
 import { useGame } from '../lib/store';
 import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/realtime';
 import { localTime } from '../lib/format';
 import type { Catalog, Me } from '../lib/types';
 import World from './World';
+import { Icon } from '../ui/Icon';
 
 function Brand() {
   return (
@@ -177,7 +180,7 @@ function TutorialOffer({ onSkip }: { onSkip: () => void }) {
   return (
     <div className="center-screen">
       <div className="auth-card stack center">
-        <div style={{ fontSize: 48 }}>🏝️</div>
+        <Icon name="island" size={56} accent="var(--sky)" />
         <h1 style={{ fontSize: 28 }}>Visit Tutorial Island?</h1>
         <p className="muted">A small practice town where you’ll walk, park a cart, set a menu and sell to passing crowds. It takes about three minutes and earns you the Graduate badge and skin.</p>
         <a className="btn gold block" href="#/tutorial">Go to Tutorial Island</a>
@@ -306,14 +309,17 @@ export default function Play() {
     subscribeUser(me.id, (ev, payload) => {
       const g = useGame.getState();
       if (ev === 'notification') {
+        sound.play('notify');
         g.toast(payload.title + (payload.body ? ` — ${payload.body}` : ''), 'info');
         if (g.me) g.set({ me: { ...g.me, unread: (g.me.unread ?? 0) + 1 } });
       } else if (ev === 'sales') {
+        useIncome.getState().add(payload.revenue ?? 0);
         window.dispatchEvent(new CustomEvent('cc:sales', { detail: payload }));
         if (g.me) g.set({ me: { ...g.me, cash: g.me.cash + (payload.revenue ?? 0) } });
       } else if (ev === 'order') {
         g.bump();
       } else if (ev === 'dm') {
+        sound.play('chat');
         g.toast(`New message from ${payload.from}`, 'info');
         window.dispatchEvent(new CustomEvent('cc:dm', { detail: payload }));
       }

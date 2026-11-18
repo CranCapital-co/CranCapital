@@ -10,6 +10,7 @@ import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, 
 import { onPresence, track, type Presence } from '../lib/realtime';
 import { localHour, money, ringFor } from '../lib/format';
 import { reportError } from '../lib/errors';
+import { reducedMotion } from '../lib/settings';
 
 const WALK_SPEED = 45; // metres per second on screen (server allows up to 60)
 const BASE_MAP_TIMEOUT = 10_000; // ms before we stop waiting for street-map tiles
@@ -23,6 +24,10 @@ export interface MapApi {
   flyTo: (lat: number, lng: number, zoom?: number) => void;
   refresh: () => void;
   setHeatmap: (on: boolean) => void;
+  // Keep the centre of attention clear of an open sheet.
+  setPadding: (inset: { right: number; bottom: number }) => void;
+  // Lift the camera to show everything you own in this city.
+  empireView: () => void;
 }
 
 interface Props {
@@ -528,6 +533,21 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         flyTo: (lat, lng, zoom) => map.flyTo({ center: [lng, lat], zoom: zoom ?? Math.max(map.getZoom(), 16.2), duration: 1200 }),
         refresh: () => refreshData(),
         setHeatmap: (on) => map.setLayoutProperty('traffic', 'visibility', on ? 'visible' : 'none'),
+        setPadding: (inset) =>
+          map.easeTo({ padding: { top: 0, left: 0, right: inset.right, bottom: inset.bottom }, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 450 }),
+        empireView: async () => {
+          const mine = await rpc<any[]>('my_businesses').catch(() => []);
+          const here = mine.filter((b) => b.city_id === m.id);
+          const pts = [...here.map((b) => [b.lng, b.lat] as [number, number]), [pos.lng, pos.lat] as [number, number]];
+          if (pts.length < 2) {
+            map.flyTo({ center: [pos.lng, pos.lat], zoom: 15, pitch: 40, duration: 1200 });
+            useGame.getState().toast(here.length ? 'This is your empire in ' + m.name + '.' : 'You don’t own anything in ' + m.name + ' yet.', 'info');
+            return;
+          }
+          const b = new maplibregl.LngLatBounds(pts[0], pts[0]);
+          pts.forEach((p) => b.extend(p));
+          map.fitBounds(b, { padding: 90, maxZoom: 17, pitch: 45, bearing: map.getBearing(), duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1300 });
+        },
       });
     });
     map.on('moveend', () => refreshData());

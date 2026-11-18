@@ -5,13 +5,22 @@ import { money, unitPrice, hourLabel, num, ago } from '../../lib/format';
 import { Window, Tabs, useApi, Loading, Money, Stat, Bars, Confirm, Field, DollarInput, Progress } from '../components';
 import { refreshMe, flagList, demandAt } from '../common';
 import type { Business } from '../../lib/types';
+import { BizIcon, FitoutIcon, GoodIcon, Icon, MenuIcon } from '../Icon';
+import { BUSINESS_ICON } from '../icons';
 
 type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'manage';
 
-export default function BusinessWindow({ params }: { params: { id: number } }) {
+export default function BusinessWindow({ params, api }: { params: { id: number }; api?: any }) {
   const me = useGame((s) => s.me)!;
   const { data: b, loading, reload } = useApi(() => rpc<Business & { mine?: boolean }>('business_detail', { p_id: params.id }), [params.id], 20000);
   const [tab, setTab] = useState<Tab>('overview');
+  // Fly the camera to the business and keep it framed beside the sheet.
+  const [flown, setFlown] = useState(false);
+  useEffect(() => {
+    if (!b || flown || !api || b.city_id !== me.city_id) return;
+    setFlown(true);
+    setTimeout(() => api.flyTo(b.lat, b.lng, 17.2), 120);
+  }, [b, flown, api, me.city_id]);
   if (loading && !b) return <Window title="Business"><Loading /></Window>;
   if (!b) return <Window title="Business">Not found.</Window>;
   const t = catalog().business_types.find((x) => x.id === b.kind)!;
@@ -34,7 +43,7 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
   };
 
   return (
-    <Window title={b.name} icon={b.icon}>
+    <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{t.name}</span>
@@ -123,7 +132,7 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
         const ratio = it.price / mi.fair_price;
         return (
           <div key={it.id} className="menu-row">
-            <span style={{ fontSize: 22 }}>{mi.icon}</span>
+            <MenuIcon id={mi.id} size={26} />
             <div className="stack tight">
               <div className="row between">
                 <strong>{mi.name}</strong>
@@ -161,7 +170,7 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
         >
           <option value="">+ Add an item…</option>
           {options.filter((o) => !menu.some((m) => m.id === o.id)).map((o) => (
-            <option key={o.id} value={o.id}>{o.icon} {o.name} (fair {money(o.fair_price)})</option>
+            <option key={o.id} value={o.id}>{o.name} (fair {money(o.fair_price)})</option>
           ))}
         </select>
       )}
@@ -201,7 +210,7 @@ function StockTab({ b }: { b: Business }) {
         <tbody>
           {goods.map((g) => (
             <tr key={g}>
-              <td>{goodIcon(g)} {goodName(g)}</td>
+              <td className="nowrap"><GoodIcon id={g} size={20} /> {goodName(g)}</td>
               <td className={`r num ${have(g) < needs[g] * 20 ? 'bad' : ''}`}>{num(have(g))}</td>
               <td className="r num">{needs[g]}</td>
               <td className="r num">{unitPrice(ask(g))}</td>
@@ -268,10 +277,10 @@ function FitoutEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
     <div className="stack">
       <p className="small muted">Pick an item, then tap tiles to place it. Tap a filled tile with the eraser to remove it (you get half the price back).</p>
       <div className="palette">
-        <button className={brush === null ? 'on' : ''} onClick={() => setBrush(null)}>🧽 Eraser</button>
+        <button className={brush === null ? 'on' : ''} onClick={() => setBrush(null)}><Icon name="eraser" size={18} /> Eraser</button>
         {items.map((f) => (
           <button key={f.id} className={brush === f.id ? 'on' : ''} onClick={() => setBrush(f.id)} title={`${f.name}: ${money(f.cost)}`}>
-            <span style={{ fontSize: 18 }}>{f.icon}</span>
+            <FitoutIcon id={f.id} />
             <span>
               {f.name}
               <br />
@@ -288,7 +297,7 @@ function FitoutEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
             onClick={() => setGrid(grid.map((y, j) => (j === i ? (brush && y === brush ? null : brush) : y)))}
             aria-label={x ? cat.fitout_items.find((f) => f.id === x)?.name : 'Empty tile'}
           >
-            {x ? cat.fitout_items.find((f) => f.id === x)?.icon : ''}
+            {x ? <FitoutIcon id={x} size={18} /> : ''}
           </button>
         ))}
       </div>
@@ -377,7 +386,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
               const good = cat.goods.find((x) => x.id === g)!;
               return (
                 <option key={g} value={g} disabled={good.warm_only && city?.climate !== 'warm'}>
-                  {good.icon} {good.name}: {num(cat.crops[g] * mult)} an hour (≈ {money(cat.crops[g] * mult * good.base_price)}/h)
+                  <GoodIcon id={g} size={18} /> {good.name}: {num(cat.crops[g] * mult)} an hour (≈ {money(cat.crops[g] * mult * good.base_price)}/h)
                 </option>
               );
             })}
@@ -402,7 +411,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
         <div className="card stack">
           <strong>{recipe.name}</strong>
           <div className="small">
-            {Object.entries(recipe.inputs).map(([g, q]) => `${q} ${goodIcon(g)} ${goodName(g)}`).join(' + ')} → {Object.entries(recipe.outputs).map(([g, q]) => `${q} ${goodIcon(g)} ${goodName(g)}`).join(' + ')}
+            {Object.entries(recipe.inputs).map(([g, q]) => `${q} ${goodName(g)}`).join(' + ')} → {Object.entries(recipe.outputs).map(([g, q]) => `${q} ${goodName(g)}`).join(' + ')}
           </div>
           <div className="small muted">Up to {num(recipe.cycles_per_hour * mult)} batches an hour{recipe.diesel_per_hour ? `, burning ${recipe.diesel_per_hour * b.level} diesel an hour` : ''}.</div>
           <table className="list">
@@ -410,7 +419,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
             <tbody>
               {[...Object.entries(recipe.inputs), ...(recipe.diesel_per_hour ? [['diesel', 0] as [string, number]] : [])].map(([g, q]) => (
                 <tr key={g}>
-                  <td>{goodIcon(g)} {goodName(g)}</td>
+                  <td className="nowrap"><GoodIcon id={g} size={20} /> {goodName(g)}</td>
                   <td className="r num">{num(have(g))}</td>
                   <td className="r num">{num(g === 'diesel' ? recipe.diesel_per_hour * b.level : (q as number) * recipe.cycles_per_hour * mult)}</td>
                 </tr>
@@ -465,7 +474,7 @@ function ShippingTab({ b }: { b: Business }) {
         <Field label="Goods">
           <select className="input" value={good} onChange={(e) => setGood(e.target.value)}>
             {goods.length === 0 && <option value="">Nothing in storage</option>}
-            {goods.map((x: any) => <option key={x.good} value={x.good}>{goodIcon(x.good)} {goodName(x.good)} ({num(x.qty)})</option>)}
+            {goods.map((x: any) => <option key={x.good} value={x.good}>{goodName(x.good)} ({num(x.qty)})</option>)}
           </select>
         </Field>
         <Field label="Quantity">
@@ -499,7 +508,7 @@ function ShippingTab({ b }: { b: Business }) {
         <tbody>
           {(prop?.shipments ?? []).filter((s: any) => s.port_id === b.id).slice(0, 12).map((s: any) => (
             <tr key={s.id}>
-              <td>{goodIcon(s.good_id)} {num(s.qty)} → {cityName(s.to_city)}</td>
+              <td><GoodIcon id={s.good_id} size={18} /> {num(s.qty)} → {cityName(s.to_city)}</td>
               <td>{s.kind}</td>
               <td className="r">{s.status === 'delivered' ? (s.delivered_value ? money(s.delivered_value) : 'arrived') : `due ${new Date(s.arrive_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</td>
             </tr>
@@ -614,7 +623,7 @@ function ShopFront({ b }: { b: Business }) {
   const cat = catalog();
   const [reported, setReported] = useState(false);
   return (
-    <Window title={b.name} icon={b.icon}>
+    <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{b.type_name}</span>
@@ -633,7 +642,7 @@ function ShopFront({ b }: { b: Business }) {
                   const mi = cat.menu_items.find((x) => x.id === m.id);
                   return (
                     <tr key={m.id}>
-                      <td>{mi?.icon} {mi?.name}</td>
+                      <td className="nowrap">{mi && <MenuIcon id={mi.id} size={18} />} {mi?.name}</td>
                       <td className="r">{money(m.price)}</td>
                       <td className="r tiny muted">fair {mi && money(mi.fair_price)}</td>
                     </tr>

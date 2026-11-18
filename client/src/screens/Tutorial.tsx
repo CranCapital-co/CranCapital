@@ -10,6 +10,7 @@ import { installIconFactory } from '../map/icons';
 import { LOCAL_GLYPHS } from '../map/style';
 import { demandAt } from '../ui/common';
 import '../styles/tutorial.css';
+import { Icon } from '../ui/Icon';
 
 const C = { lng: -150.0, lat: 0.25 };
 const M_LAT = 1 / 110574;
@@ -297,7 +298,7 @@ export default function Tutorial() {
       <div ref={el} className="map" />
       <div className="hud">
         <div className="hud-pill">
-          <span style={{ fontSize: 22, paddingLeft: 6 }}>🏝️</span>
+          <Icon name="island" size={30} accent="var(--sky)" />
           <div>
             <div className="hud-cash">{money(cash, { cents: false })}</div>
             <div className="hud-sub">Practice money · Tutorial Island</div>
@@ -339,7 +340,7 @@ export default function Tutorial() {
               return (
                 <div key={m.id} className="row" style={{ marginBottom: 6 }}>
                   <select className="input" style={{ width: 'auto' }} value={m.id} onChange={(e) => setMenu(menu.map((x, j) => (j === i ? { id: e.target.value, price: DISHES.find((dd) => dd.id === e.target.value)!.fair } : x)))}>
-                    {DISHES.filter((dd) => dd.id === m.id || !menu.some((x) => x.id === dd.id)).map((dd) => <option key={dd.id} value={dd.id}>{dd.icon} {dd.name}</option>)}
+                    {DISHES.filter((dd) => dd.id === m.id || !menu.some((x) => x.id === dd.id)).map((dd) => <option key={dd.id} value={dd.id}>{dd.name}</option>)}
                   </select>
                   <input type="range" min={d.fair * 0.5} max={d.fair * 2} step={100} value={m.price} onChange={(e) => setMenu(menu.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)))} aria-label={`${d.name} price`} />
                   <b className="num" style={{ minWidth: 56 }}>{money(m.price)}</b>
@@ -394,7 +395,7 @@ export default function Tutorial() {
         )}
         {step === 'done' && (
           <>
-            <h3>🎓 You’re ready</h3>
+            <h3 className="row"><Icon name="star" accent="var(--gold)" /> You’re ready</h3>
             <p className="small">You sold {sales.count} dishes for {money(sales.revenue)}. In real cities your cart keeps selling while you’re offline, for up to 24 hours. Then grow into shops, land, mines, factories and finance.</p>
             <button className="btn gold" onClick={finish}>Leave the island</button>
           </>

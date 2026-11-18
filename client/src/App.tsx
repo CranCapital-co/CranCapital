@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import Landing from './screens/Landing';
 import { LegalPage, WikiPage, ReportPage } from './screens/Pages';
 import { Toasts } from './ui/components';
+import { IconSprite } from './ui/Icon';
 import { supabase, AUTH_RETURN } from './lib/supabase';
 
 const Play = lazy(() => import('./screens/Play'));
@@ -59,6 +60,7 @@ export default function App() {
   return (
     <>
       <Suspense fallback={<div className="boot"><div className="spinner" /></div>}>{page}</Suspense>
+      <IconSprite />
       <Toasts />
     </>
   );

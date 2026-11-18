@@ -3,6 +3,7 @@ import { rpc } from '../../lib/supabase';
 import { useGame, goodName, goodIcon, cityName } from '../../lib/store';
 import { money, num, until } from '../../lib/format';
 import { Window, Tabs, useApi, Loading, Progress, Empty } from '../components';
+import { GoodIcon } from '../Icon';
 
 export default function InventoryWindow() {
   const [tab, setTab] = useState<'storage' | 'shipments' | 'orders'>('storage');
@@ -11,10 +12,10 @@ export default function InventoryWindow() {
   const { data: prop } = useApi(() => (tab === 'shipments' ? rpc<any>('my_property') : Promise.resolve(null)), [tab]);
   const { data: orders } = useApi(() => (tab === 'orders' ? rpc<any>('my_orders') : Promise.resolve(null)), [tab]);
   return (
-    <Window title="Storage" icon="📦">
+    <Window title="Storage" icon="box">
       <div className="stack">
         <Tabs tabs={[['storage', 'Goods'], ['shipments', 'Shipments'], ['orders', 'Orders']]} value={tab} onChange={setTab} />
-        {tab === 'storage' && (!storage ? <Loading /> : storage.length === 0 ? <Empty icon="📦" title="Nothing in storage">Buy goods on the market, or make them on your farms and in factories.</Empty> : storage.map((c) => (
+        {tab === 'storage' && (!storage ? <Loading /> : storage.length === 0 ? <Empty icon="box" title="Nothing in storage">Buy goods on the market, or make them on your farms and in factories.</Empty> : storage.map((c) => (
           <div key={c.city_id} className="card stack">
             <div className="row between">
               <strong>{c.city_name}</strong>
@@ -26,7 +27,7 @@ export default function InventoryWindow() {
                 <tbody>
                   {c.goods.map((g: any) => (
                     <tr key={g.good} className="click" onClick={() => open('market', { good: g.good })}>
-                      <td>{goodIcon(g.good)} {goodName(g.good)}</td>
+                      <td className="nowrap"><GoodIcon id={g.good} size={20} /> {goodName(g.good)}</td>
                       <td className="r num">{num(g.qty)}</td>
                       <td className="r num small muted">{money(g.value)}</td>
                     </tr>
@@ -36,12 +37,12 @@ export default function InventoryWindow() {
             )}
           </div>
         )))}
-        {tab === 'shipments' && (!prop ? <Loading /> : prop.shipments.length === 0 ? <Empty icon="🚢" title="No shipments">Ship goods from a port (tier 5).</Empty> : (
+        {tab === 'shipments' && (!prop ? <Loading /> : prop.shipments.length === 0 ? <Empty icon="ship" title="No shipments">Ship goods from a port (tier 5).</Empty> : (
           <table className="list">
             <tbody>
               {prop.shipments.map((s: any) => (
                 <tr key={s.id}>
-                  <td>{goodIcon(s.good_id)} {num(s.qty)} {goodName(s.good_id)}</td>
+                  <td><GoodIcon id={s.good_id} size={18} /> {num(s.qty)} {goodName(s.good_id)}</td>
                   <td className="small">{cityName(s.from_city)} → {cityName(s.to_city)}</td>
                   <td className="r small">{s.status === 'delivered' ? (s.delivered_value ? money(s.delivered_value) : 'arrived') : `in ${until(s.arrive_at)}`}</td>
                 </tr>
@@ -56,7 +57,7 @@ export default function InventoryWindow() {
               <table className="list"><tbody>
                 {orders.open.map((o: any) => (
                   <tr key={o.id} className="click" onClick={() => open('market', { good: o.good_id })}>
-                    <td>{o.icon} {o.name}</td><td>{o.side}</td><td className="r num">{num(o.qty - o.filled)}</td><td className="r num">{money(o.price)}</td>
+                    <td className="nowrap"><GoodIcon id={o.good_id ?? o.good} size={18} /> {o.name}</td><td>{o.side}</td><td className="r num">{num(o.qty - o.filled)}</td><td className="r num">{money(o.price)}</td>
                   </tr>
                 ))}
               </tbody></table>
@@ -64,7 +65,7 @@ export default function InventoryWindow() {
             <strong className="small">Recent trades</strong>
             <table className="list"><tbody>
               {orders.recent.map((t: any) => (
-                <tr key={t.id}><td>{t.icon} {t.name}</td><td className={t.side === 'buy' ? 'good' : 'bad'}>{t.side}</td><td className="r num">{num(t.qty)}</td><td className="r num">{money(t.value)}</td></tr>
+                <tr key={t.id}><td className="nowrap"><GoodIcon id={t.good_id ?? t.good} size={18} /> {t.name}</td><td className={t.side === 'buy' ? 'good' : 'bad'}>{t.side}</td><td className="r num">{num(t.qty)}</td><td className="r num">{money(t.value)}</td></tr>
               ))}
             </tbody></table>
           </div>

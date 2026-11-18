@@ -3,18 +3,20 @@ import { rpc, BACKEND_READY } from '../lib/supabase';
 import { money, num, pct, unitPrice } from '../lib/format';
 import { Footer } from './Pages';
 import '../styles/landing.css';
+import { GoodIcon, Icon } from '../ui/Icon';
+const TIER_ACCENT = ['#e3694d', '#2f8f6e', '#6c9a3d', '#8a6b4a', '#4b6a8c', '#6b4b8c'];
 
 const TIERS = [
-  { icon: '🛒', name: 'Food carts', text: 'Park on a busy real street, pick a menu and set your prices.' },
-  { icon: '🍽️', name: 'Shops and restaurants', text: 'Rent a room in any building, fit it out, hire a crew, sell while you sleep.' },
-  { icon: '🏢', name: 'Land and buildings', text: 'Buy plots and whole buildings. Farm, build homes, collect rent.' },
-  { icon: '⛏️', name: 'Mining and surveys', text: 'Pay for a survey that only you can see, then dig out what you found.' },
-  { icon: '🏭', name: 'Industry and ports', text: 'Turn raw goods into steel, furniture and electronics, and ship them abroad.' },
-  { icon: '🏦', name: 'Finance', text: 'Run a bank that lends to other players, or take your company public.' },
+  { icon: 'cart', name: 'Food carts', text: 'Park on a busy real street, pick a menu and set your prices.' },
+  { icon: 'restaurant', name: 'Shops and restaurants', text: 'Rent a room in any building, fit it out, hire a crew, sell while you sleep.' },
+  { icon: 'apartments', name: 'Land and buildings', text: 'Buy plots and whole buildings. Farm, build homes, collect rent.' },
+  { icon: 'mine', name: 'Mining and surveys', text: 'Pay for a survey that only you can see, then dig out what you found.' },
+  { icon: 'factory', name: 'Industry and ports', text: 'Turn raw goods into steel, furniture and electronics, and ship them abroad.' },
+  { icon: 'bank', name: 'Finance', text: 'Run a bank that lends to other players, or take your company public.' },
 ];
 
 const PILLARS = [
-  ['Your real world', 'Every street comes from real map data: London, New York, Tokyo and Singapore.'],
+  ['Your real world', 'Every street comes from real map data: London, New York, Tokyo, Singapore and Paris.'],
   ['Small start, huge ceiling', 'A cart with one menu grows into land, mines, factories, shipping and trading.'],
   ['One economy for everyone', 'All goods trade on one shared exchange. Other players are your customers, suppliers and rivals.'],
   ['It keeps running', 'Businesses sell while you’re away. Coming back to see what you earned is half the fun.'],
@@ -134,7 +136,7 @@ export default function Landing() {
           <div className="ticker-track">
             {[...stats.ticker, ...stats.ticker].map((t: any, i: number) => (
               <span key={i}>
-                {t.icon} {t.name} <b>{unitPrice(t.price)}</b>{' '}
+                <GoodIcon id={t.good ?? t.id} size={18} /> {t.name} <b>{unitPrice(t.price)}</b>{' '}
                 <em className={t.change_pct > 0 ? 'good' : t.change_pct < 0 ? 'bad' : 'muted'}>{pct(t.change_pct)}</em>
               </span>
             ))}
@@ -149,7 +151,7 @@ export default function Landing() {
           {TIERS.map((t, i) => (
             <div key={t.name} className="tier-card">
               <div className="tier-top">
-                <span className="tier-icon">{t.icon}</span>
+                <span className="tier-icon"><Icon name={t.icon} size={34} accent={TIER_ACCENT[i]} /></span>
                 <span className="chip">Tier {i + 1}</span>
               </div>
               <h3>{t.name}</h3>

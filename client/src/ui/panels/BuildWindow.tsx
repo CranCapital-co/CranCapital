@@ -4,6 +4,7 @@ import { money } from '../../lib/format';
 import { Window, useApi } from '../components';
 import { refreshMe } from '../common';
 import type { Business } from '../../lib/types';
+import { BizIcon, Icon } from '../Icon';
 
 export default function BuildWindow() {
   const me = useGame((s) => s.me)!;
@@ -19,7 +20,7 @@ export default function BuildWindow() {
     <section className={`card stack ${locked(tier) ? 'locked' : ''}`} style={locked(tier) ? { opacity: 0.6 } : undefined}>
       <div className="row between">
         <strong>Tier {tier}: {tierInfo(tier).name}</strong>
-        {locked(tier) ? <span className="chip">🔒 {money(tierInfo(tier).net_worth, { compact: true })} net worth</span> : <span className="chip green">Unlocked</span>}
+        {locked(tier) ? <span className="chip"><Icon name="lock" size={14} /> {money(tierInfo(tier).net_worth, { compact: true })} net worth</span> : <span className="chip green">Unlocked</span>}
       </div>
       <div className="small muted">New idea: {tierInfo(tier).idea}.</div>
       {children}
@@ -27,13 +28,13 @@ export default function BuildWindow() {
   );
 
   return (
-    <Window title="Build" icon="➕">
+    <Window title="Build" icon="build">
       <div className="stack">
         <Section tier={1}>
           <div className="row between">
             <div>
-              <b>🛒 Food cart</b> · {money(types(1)[0].cost)}
-              <div className="small muted">{carts} of {cat.config.max_carts} carts. Busy streets near stations and sights sell most: the 🔥 button on the map shows where crowds are thickest.</div>
+              <b className="row" style={{ display: 'inline-flex', gap: 6 }}><BizIcon kind="cart" tier={1} /> Food cart</b> · {money(types(1)[0].cost)}
+              <div className="small muted">{carts} of {cat.config.max_carts} carts. Busy streets near stations and sights sell most: the foot traffic button in the map tools shows where crowds are thickest.</div>
             </div>
             <button
               className="btn small"
@@ -54,7 +55,7 @@ export default function BuildWindow() {
             <tbody>
               {types(2).map((t) => (
                 <tr key={t.id}>
-                  <td>{t.icon} {t.name}</td>
+                  <td className="nowrap"><BizIcon kind={t.id} tier={t.tier} size={20} /> {t.name}</td>
                   <td className="small muted">{t.description}</td>
                   <td className="r nowrap">{money(t.cost, { cents: false })}</td>
                 </tr>
@@ -64,11 +65,11 @@ export default function BuildWindow() {
         </Section>
 
         <Section tier={3}>
-          <p className="small">Turn on land mode (🗺️), tap a green plot and buy it, then build on it. You can also buy whole buildings by tapping them, and earn rent.</p>
+          <p className="small">Turn on land mode (map tools, then Land), tap a green plot and buy it, then build on it. You can also buy whole buildings by tapping them, and earn rent.</p>
           <table className="list">
             <tbody>
               {types(3).map((t) => (
-                <tr key={t.id}><td>{t.icon} {t.name}</td><td className="small muted">{t.description}</td><td className="r nowrap">{money(t.cost, { cents: false })}</td></tr>
+                <tr key={t.id}><td className="nowrap"><BizIcon kind={t.id} tier={t.tier} size={20} /> {t.name}</td><td className="small muted">{t.description}</td><td className="r nowrap">{money(t.cost, { cents: false })}</td></tr>
               ))}
             </tbody>
           </table>
@@ -83,7 +84,7 @@ export default function BuildWindow() {
           <table className="list">
             <tbody>
               {types(4).map((t) => (
-                <tr key={t.id}><td>{t.icon} {t.name}</td><td className="small muted">{goodName(t.resource!)}: {t.rate_per_hour}/h</td><td className="r nowrap">{money(t.cost, { cents: false })}</td></tr>
+                <tr key={t.id}><td className="nowrap"><BizIcon kind={t.id} tier={t.tier} size={20} /> {t.name}</td><td className="small muted">{goodName(t.resource!)}: {t.rate_per_hour}/h</td><td className="r nowrap">{money(t.cost, { cents: false })}</td></tr>
               ))}
             </tbody>
           </table>
@@ -114,7 +115,7 @@ export default function BuildWindow() {
                 const r = t.recipe ? cat.recipes.find((x) => x.id === t.recipe) : null;
                 return (
                   <tr key={t.id}>
-                    <td>{t.icon} {t.name}</td>
+                    <td className="nowrap"><BizIcon kind={t.id} tier={t.tier} size={20} /> {t.name}</td>
                     <td className="small muted">{r ? `${Object.keys(r.inputs).map(goodName).join(' + ')} → ${Object.keys(r.outputs).map(goodName).join(' + ')}` : t.description}</td>
                     <td className="r nowrap">{money(t.cost, { compact: true })}</td>
                   </tr>

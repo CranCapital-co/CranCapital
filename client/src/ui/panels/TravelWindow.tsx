@@ -3,6 +3,7 @@ import { useGame, act, catalog } from '../../lib/store';
 import { localTime, money } from '../../lib/format';
 import { Window, useApi, Loading } from '../components';
 import type { Me } from '../../lib/types';
+import { Icon } from '../Icon';
 
 export default function TravelWindow() {
   const me = useGame((s) => s.me)!;
@@ -14,7 +15,7 @@ export default function TravelWindow() {
   }, [me.city_id]);
   const { data: events } = useApi(() => rpc<any[]>('world_events'), []);
   return (
-    <Window title="Travel" icon="✈️">
+    <Window title="Travel" icon="plane">
       <div className="stack">
         <p className="small muted">You can manage your businesses from anywhere. To open new ones, walk the streets of a city: fly there first. Your position is a game position only.</p>
         {cat.cities.map((c) => {
@@ -46,7 +47,7 @@ export default function TravelWindow() {
                 )}
               </div>
               {ev.map((e) => (
-                <div key={e.id} className="notice small">🎉 <b>{e.title}</b> {e.active ? '(on now)' : '(soon)'} — {e.body}</div>
+                <div key={e.id} className="notice small"><Icon name="event" size={16} accent="var(--coral)" /> <b>{e.title}</b> {e.active ? '(on now)' : '(soon)'} — {e.body}</div>
               ))}
             </div>
           );

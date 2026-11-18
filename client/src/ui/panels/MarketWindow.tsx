@@ -4,6 +4,7 @@ import { useGame, act, catalog, cityName } from '../../lib/store';
 import { money, unitPrice, pct, num, ago } from '../../lib/format';
 import { Window, useApi, Loading, Candles, Tabs, Field } from '../components';
 import { refreshMe } from '../common';
+import { GoodIcon } from '../Icon';
 
 export default function MarketWindow({ params }: { params?: { good?: string } }) {
   const [good, setGood] = useState<string>(params?.good ?? 'lettuce');
@@ -11,14 +12,14 @@ export default function MarketWindow({ params }: { params?: { good?: string } })
   const { data: list } = useApi(() => rpc<any[]>('market_overview'), [], 15000);
   const goods = (list ?? []).filter((g) => filter === 'all' || g.category === filter || (filter === 'material' && g.category === 'fuel'));
   return (
-    <Window title="Market" icon="📈" wide>
+    <Window title="Market" icon="market" wide>
       <div className="market">
         <div className="stack">
           <Tabs tabs={[['all', 'All'], ['farm', 'Farm'], ['raw', 'Raw'], ['material', 'Materials'], ['finished', 'Finished']]} value={filter} onChange={setFilter} />
           <div className="goods-list">
             {!list ? <Loading /> : goods.map((g) => (
               <button key={g.good} className={g.good === good ? 'on' : ''} onClick={() => setGood(g.good)}>
-                <span style={{ fontSize: 20 }}>{g.icon}</span>
+                <GoodIcon id={g.good} size={26} />
                 <span className="ellipsis"><b>{g.name}</b><br /><span className="tiny muted">vol {num(g.volume_24h)}</span></span>
                 <span className="num small">{unitPrice(g.last)}</span>
                 <span className={`num tiny ${g.change_pct > 0 ? 'good' : g.change_pct < 0 ? 'bad' : 'muted'}`}>{pct(g.change_pct)}</span>
@@ -59,7 +60,7 @@ function GoodDetail({ good }: { good: string }) {
   return (
     <div className="stack">
       <div className="row between">
-        <h3 style={{ margin: 0 }}>{g.icon} {g.name}</h3>
+        <h3 style={{ margin: 0 }} className="row"><GoodIcon id={g.id ?? good} size={28} /> {g.name}</h3>
         <span className="small muted">base {unitPrice(g.base_price)}</span>
       </div>
       <p className="small muted" style={{ margin: 0 }}>{g.description}</p>

@@ -5,6 +5,7 @@ import { money, num } from '../../lib/format';
 import { distM } from '../../lib/citydata';
 import { Window, useApi, Loading, Stat, Field, DollarInput, Confirm, Money } from '../components';
 import { refreshMe } from '../common';
+import { BizIcon, Icon } from '../Icon';
 
 function useNear(lat?: number, lng?: number, range = 80) {
   const pos = useGame((s) => s.pos);
@@ -43,7 +44,7 @@ function BuildingView({ id }: { id: number }) {
   if (loading && !b) return <Window title="Building"><Loading /></Window>;
   if (!b) {
     return (
-      <Window title="Building" icon="🏢">
+      <Window title="Building" icon="apartments">
         <p>This building isn’t part of the game yet. Only buildings inside each city’s playable area can be rented or bought.</p>
       </Window>
     );
@@ -55,7 +56,7 @@ function BuildingView({ id }: { id: number }) {
     await refreshMe();
   };
   return (
-    <Window title={title} icon={b.landmark ? '🏛️' : '🏢'}>
+    <Window title={title} icon={b.landmark ? 'bank' : 'apartments'}>
       <div className="stack">
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{b.kind}</span>
@@ -77,7 +78,7 @@ function BuildingView({ id }: { id: number }) {
               <tbody>
                 {b.tenants.map((t: any) => (
                   <tr key={t.business_id} className="click" onClick={() => open('business', { id: t.business_id })}>
-                    <td>{t.icon} {t.name}</td>
+                    <td className="nowrap"><BizIcon kind={t.id} tier={t.tier} size={20} /> {t.name}</td>
                     <td className="small muted">{t.owner_name}</td>
                     {b.mine && <td className="r small">{money(t.rent_per_day)}/day</td>}
                   </tr>
@@ -100,7 +101,7 @@ function BuildingView({ id }: { id: number }) {
                   <Field label="Business">
                     <select className="input" value={kind} onChange={(e) => setKind(e.target.value)}>
                       {roomTypes.map((t) => (
-                        <option key={t.id} value={t.id} disabled={me.tier < t.tier}>{t.icon} {t.name} ({money(t.cost, { compact: true })}){me.tier < t.tier ? ` · tier ${t.tier}` : ''}</option>
+                        <option key={t.id} value={t.id} disabled={me.tier < t.tier}>{t.name} ({money(t.cost, { compact: true })}){me.tier < t.tier ? ` · tier ${t.tier}` : ''}</option>
                       ))}
                     </select>
                   </Field>
@@ -220,7 +221,7 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
   );
   const sel = cat.business_types.find((t) => t.id === kind);
   return (
-    <Window title={`Plot ${px}·${py}`} icon="🗺️">
+    <Window title={`Plot ${px}·${py}`} icon="land">
       <div className="stack">
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">25 × 25 m</span>
@@ -233,11 +234,11 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
           <Stat label="Survey" value={p.surveyed ? 'Done' : 'Not yet'} />
         </div>
         {p.deposit && (
-          <div className="notice gold small">⛏️ {goodName(p.deposit.resource)} deposit under this plot: {num(p.deposit.units_left)} units left.</div>
+          <div className="notice gold small"><Icon name="mine" size={16} /> {goodName(p.deposit.resource)} deposit under this plot: {num(p.deposit.units_left)} units left.</div>
         )}
         {p.business && (
           <button className="card click row between" onClick={() => open('business', { id: p.business.id })}>
-            <span>{p.business.icon} {p.business.name}</span>
+            <span className="row"><BizIcon kind={p.business.kind} size={20} /> {p.business.name}</span>
             <span className="chip">{p.business.type_name}</span>
           </button>
         )}
@@ -272,7 +273,7 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
               <select className="input" value={kind} onChange={(e) => { setKind(e.target.value); setOption(''); }}>
                 {buildable.map((t) => (
                   <option key={t.id} value={t.id} disabled={me.tier < t.tier}>
-                    {t.icon} {t.name} · {money(t.cost, { compact: true })}{me.tier < t.tier ? ` (tier ${t.tier})` : ''}
+                    <BizIcon kind={t.id} tier={t.tier} size={18} /> {t.name} · {money(t.cost, { compact: true })}{me.tier < t.tier ? ` (tier ${t.tier})` : ''}
                   </option>
                 ))}
               </select>
@@ -283,7 +284,7 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
                   <option value="">Choose…</option>
                   {Object.keys(cat.crops).map((g) => {
                     const good = cat.goods.find((x) => x.id === g)!;
-                    return <option key={g} value={g} disabled={good.warm_only && climate !== 'warm'}>{good.icon} {good.name}{good.warm_only && climate !== 'warm' ? ' (warm cities only)' : ''}</option>;
+                    return <option key={g} value={g} disabled={good.warm_only && climate !== 'warm'}>{good.name}{good.warm_only && climate !== 'warm' ? ' (warm cities only)' : ''}</option>;
                   })}
                 </select>
               </Field>

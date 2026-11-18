@@ -13,12 +13,12 @@ export default function ModWindow() {
   const [eventCity, setEventCity] = useState('london');
   const [eventKind, setEventKind] = useState('festival');
   return (
-    <Window title="Staff tools" icon="🛡️" wide>
+    <Window title="Staff tools" icon="staff" wide>
       <div className="stack">
         <p className="small muted">Every decision is made by a person and carries a reason the player sees. Nothing is hidden silently.</p>
         <Tabs tabs={[['reports', `Reports (${data?.reports?.length ?? 0})`], ['illegal', `Illegal content (${data?.illegal?.length ?? 0})`], ['multi', 'Multi-accounts'], ['events', 'Events'], ['log', 'Log']]} value={tab} onChange={setTab} />
         {!data ? <Loading /> : tab === 'reports' ? (
-          data.reports.length === 0 ? <Empty icon="✅" title="Queue is clear" /> : data.reports.map((r: any) => (
+          data.reports.length === 0 ? <Empty icon="check" title="Queue is clear" /> : data.reports.map((r: any) => (
             <div key={r.id} className="card stack">
               <div className="row between">
                 <strong>{r.reason} · {r.kind}</strong>
@@ -32,7 +32,7 @@ export default function ModWindow() {
             </div>
           ))
         ) : tab === 'illegal' ? (
-          data.illegal.length === 0 ? <Empty icon="✅" title="No reports" /> : data.illegal.map((r: any) => (
+          data.illegal.length === 0 ? <Empty icon="check" title="No reports" /> : data.illegal.map((r: any) => (
             <div key={r.id} className="card stack">
               <div className="row between"><strong>{r.location}</strong><span className="tiny muted">{ago(r.created_at)}</span></div>
               <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{r.description}</div>
@@ -44,7 +44,7 @@ export default function ModWindow() {
             </div>
           ))
         ) : tab === 'multi' ? (
-          !multi ? <Loading /> : multi.length === 0 ? <Empty icon="✅" title="No shared devices found" /> : multi.map((m: any, i: number) => (
+          !multi ? <Loading /> : multi.length === 0 ? <Empty icon="check" title="No shared devices found" /> : multi.map((m: any, i: number) => (
             <div key={i} className="card small">
               {m.players.map((p: any) => `${p.name} (#${p.player_no})`).join(' & ')} · {m.shared_devices} shared device(s) · {m.trades_between} trades between them
             </div>

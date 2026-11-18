@@ -3,11 +3,9 @@ import { rpc } from '../../lib/supabase';
 import { useGame } from '../../lib/store';
 import { ago } from '../../lib/format';
 import { Window, useApi, Loading, Empty } from '../components';
+import { Icon } from '../Icon';
+import { NOTIFY_ICON } from '../icons';
 
-const ICONS: Record<string, string> = {
-  stock: '📦', business: '🏪', order: '📈', badge: '🏅', tier: '⭐', tenant: '🏢', property: '🗺️', shipment: '🚢',
-  friend: '🤝', referral: '🎁', board: '📝', moderation: '🛡️', bank: '🏦', shares: '🔔',
-};
 
 export default function NotificationsWindow() {
   const me = useGame((s) => s.me)!;
@@ -18,8 +16,8 @@ export default function NotificationsWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Window title="Notifications" icon="🔔">
-      {!data ? <Loading /> : data.length === 0 ? <Empty icon="🔕" title="Nothing yet">Sales milestones, stock warnings, orders and messages show up here.</Empty> : (
+    <Window title="Notifications" icon="bell">
+      {!data ? <Loading /> : data.length === 0 ? <Empty icon="bellOff" title="Nothing yet">Sales milestones, stock warnings, orders and messages show up here.</Empty> : (
         <div className="stack tight">
           {data.map((n) => (
             <button
@@ -34,7 +32,7 @@ export default function NotificationsWindow() {
                 else if (n.kind === 'order') open('inventory');
               }}
             >
-              <span style={{ fontSize: 22 }}>{ICONS[n.kind] ?? '•'}</span>
+              <Icon name={NOTIFY_ICON[n.kind] ?? 'bell'} size={26} accent="var(--gold)" />
               <div className="grow">
                 <strong className="small">{n.title}</strong>
                 {n.body && <div className="small muted">{n.body}</div>}
