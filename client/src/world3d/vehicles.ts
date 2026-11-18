@@ -14,7 +14,7 @@ const CAR_COLORS = ['#e3694d', '#3f8ed6', '#f6efe0', '#2b2f33', '#9aa3ad', '#2f6
 const COUNT = { high: 36, medium: 16, saver: 0 };
 
 export class Vehicles {
-  private lanes: Lane[] = [];
+  lanes: Lane[] = [];
   private cars: Car[] = [];
   private movers: Mover[] = [];
   private parts = vehicleParts();

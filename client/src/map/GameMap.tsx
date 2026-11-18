@@ -4,6 +4,15 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { mapStyle, LIGHT, DARK, OFM_URL, OFM_GLYPHS, LOCAL_GLYPHS, OSM_ATTRIBUTION, mapText } from './style';
 import { installIconFactory } from './icons';
 import { Crowd, crowdLevel, nightAlpha } from './crowd';
+import { applyPalette, blendPalette, NIGHT } from './style';
+import type { LivingCity, Weather } from '../world3d/living';
+
+// The latest weather and world event for this city (the HUD fetches them;
+// the map listens), kept so a map that loads later can use them.
+let lastWeather: Weather | null = null;
+let lastEvent: string | null = null;
+window.addEventListener('cc:weather', (e) => (lastWeather = (e as CustomEvent).detail));
+window.addEventListener('cc:event', (e) => (lastEvent = (e as CustomEvent).detail?.kind ?? null));
 import { useGame, catalog } from '../lib/store';
 import { rpc } from '../lib/supabase';
 import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, inCity, type CityData } from '../lib/citydata';
@@ -52,7 +61,6 @@ function dark() {
 
 export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Props) {
   const el = useRef<HTMLDivElement>(null);
-  const nightEl = useRef<HTMLDivElement>(null);
   const ghostEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [issue, setIssue] = useState<MapIssue>(null);
@@ -101,6 +109,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     let world: WorldLayer | null = null; // the 3D layer, once loaded
     let follow = true; // the camera eases after you as you walk
     let lastBiz: any[] = [];
+    let living: LivingCity | null = null;
 
     const setGeo = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 
@@ -613,6 +622,11 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         };
         w.setBusinesses(lastBiz);
         crowd.setEnabled(false); // the 3D crowd replaces the dots
+        const { LivingCity } = await import('../world3d/living');
+        living = new LivingCity(w, map, dark() ? DARK : LIGHT);
+        living.setWeather(lastWeather);
+        living.setEvent(lastEvent);
+        (window as any).__ccLiving = living;
         // Badges hand over to models as you zoom in; names float above heads.
         map.setPaintProperty('me', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
         map.setPaintProperty('players', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
@@ -707,6 +721,10 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       }, 2000);
     };
     window.addEventListener('cc:delivery', onDelivery);
+    const onWeather = (e: Event) => living?.setWeather((e as CustomEvent).detail);
+    const onEvent = (e: Event) => living?.setEvent((e as CustomEvent).detail?.kind ?? null);
+    window.addEventListener('cc:weather', onWeather);
+    window.addEventListener('cc:event', onEvent);
     window.addEventListener('cc:ship', onShip);
     window.addEventListener('cc:taxi', onTaxi);
     window.addEventListener('cc:levelup', onLevel);
@@ -715,7 +733,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     const tick = () => {
       const now = new Date();
       const h = localHour(m.tz, now) + now.getMinutes() / 60;
-      if (nightEl.current) nightEl.current.style.opacity = String(nightAlpha(h));
+      if (living) living.update(now);
+      else if (ready) applyPalette(map, blendPalette(dark() ? DARK : LIGHT, NIGHT, (nightAlpha(h) / 0.34) * 0.85)); // 2D map: night by the clock
       const prefs = useGame.getState().me?.prefs ?? {};
       crowd.setEnabled(!prefs.hide_crowds && !world);
       crowd.setDensity(crowdLevel(Math.floor(h)));
@@ -749,6 +768,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       window.removeEventListener('cc:sales', onSales);
       window.removeEventListener('cc:built', onBuilt);
       window.removeEventListener('cc:delivery', onDelivery);
+      window.removeEventListener('cc:weather', onWeather);
+      window.removeEventListener('cc:event', onEvent);
       window.removeEventListener('cc:ship', onShip);
       window.removeEventListener('cc:taxi', onTaxi);
       window.removeEventListener('cc:levelup', onLevel);
@@ -762,7 +783,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   return (
     <div className="map-wrap">
       <div ref={el} className="map" />
-      <div ref={nightEl} className="night" />
       <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }} />
       {debug && <pre ref={debugEl} className="debug-overlay" />}
       {issue && (

@@ -64,7 +64,7 @@ interface Particle { kind: 'puff' | 'smoke' | 'coin' | 'dust'; x: number; y: num
 interface CharState { pos: THREE.Vector3; target: THREE.Vector3; yaw: number; speed: number; phase: number; idle: number; anim: Anim; animT: number; info: CharInfo; seen: number }
 export type Anim = 'idle' | 'walk' | 'run' | 'wave' | 'cheer' | 'sit' | 'phone';
 
-interface BizState3D { info: BizInfo; pos: THREE.Vector3; yaw: number; model: ModelDef; scale: number; spot: ShopSpot | null; born: number; grow: number; vendorWave: number }
+export interface BizState3D { info: BizInfo; pos: THREE.Vector3; yaw: number; model: ModelDef; scale: number; spot: ShopSpot | null; born: number; grow: number; vendorWave: number }
 
 export class WorldLayer implements CustomLayerInterface {
   id = 'world3d';
@@ -102,6 +102,8 @@ export class WorldLayer implements CustomLayerInterface {
   onQuality?: (q: Quality) => void;
   onPaid?: (biz: BizInfo, amount: number, screen: { x: number; y: number } | null) => void;
   night = 0; // 0 day .. 1 night, set by the living-city code
+  rainK = 0; // how hard it's raining (umbrellas come out)
+  eventKind: string | null = null;
   private parts = {
     char: charParts(),
     acc: accentParts(),
@@ -189,6 +191,7 @@ export class WorldLayer implements CustomLayerInterface {
       shadow: new THREE.MeshBasicMaterial({ color: '#2a2418', transparent: true, opacity: 0.22, depthWrite: false }),
       puff: new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.75, depthWrite: false }),
       ringGlow: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 }),
+      halo: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }),
     };
     this.pools = new Pools(this.scene, this.materials);
     this.scene.add(this.hemi, this.sun, this.sun.target);
@@ -363,6 +366,10 @@ export class WorldLayer implements CustomLayerInterface {
     const b = this.biz.get(businessId);
     if (b) b.born = this.time;
     else this.pendingBuilds.add(businessId); // starts when it arrives on the map
+  }
+
+  businessList() {
+    return this.biz.values();
   }
 
   // Tap picking: the business whose model is under the point, if any.
@@ -695,7 +702,8 @@ export class WorldLayer implements CustomLayerInterface {
       const base = this.mBase.compose(this.vPart.set(px, 0, pz), this.q.setFromAxisAngle(this.yAxis, yaw), this.sc.setScalar(S));
       const hipY = 1.7 * P.scale + bob;
       const leg = (x: number, a: number) => this.tmp2.multiplyMatrices(base, this.mPart.compose(this.vPart.set(x, hipY, 0), this.qPart.setFromAxisAngle(this.xAxis, a), this.one));
-      const lc = this.col.set(WALKER_LEGS[w.legs]);
+      // Shorts in a heatwave: bare legs.
+      const lc = this.col.set(this.eventKind === 'heatwave' && w.id % 2 === 0 ? SKIN_TONES[w.skin] : WALKER_LEGS[w.legs]);
       this.pools.get('w-leg', () => P.leg, 'solid', true).add(leg(-0.3 * P.scale, swing), lc);
       this.pools.get('w-leg', () => P.leg, 'solid', true).add(leg(0.3 * P.scale, -swing), lc);
       const bodyM = this.tmp2.multiplyMatrices(base, this.mPart.makeTranslation(0, hipY, 0));
@@ -705,7 +713,10 @@ export class WorldLayer implements CustomLayerInterface {
       const headM = this.mOut.multiplyMatrices(base, this.mPart.compose(this.vPart.set(0, hipY + bodyH, 0), this.qPart.setFromAxisAngle(this.yAxis, w.slow * 0.6), this.one));
       this.pools.get('w-head', () => P.head, 'solid', true).add(headM, this.col.set(SKIN_TONES[w.skin]));
       this.pools.get('w-hair', () => P.hair, 'solid', true).add(headM, this.col.set(HAIR[w.hair]));
-      if (w.carry) {
+      if (this.rainK > 0.3 && w.id % 3 !== 0 && (w.state === 'walk' || w.state === 'leave' || w.state === 'toShop')) {
+        const m = this.tmp2.multiplyMatrices(base, this.mPart.compose(this.vPart.set(0.55, hipY - 0.3, 0.1), this.qPart.identity(), this.sc.setScalar(1.25)));
+        this.pools.get('umbrella', () => this.parts.carry.umbrella, 'solid', true).add(m, this.col.set(WALKER_CLOTHES[(w.clothes + 3) % WALKER_CLOTHES.length]));
+      } else if (w.carry) {
         const m = this.tmp2.multiplyMatrices(base, this.mPart.makeTranslation(0.95, hipY - 0.9 + bob * 0.5, 0.2));
         if (w.carry === 1) this.pools.get('carry-bag', () => this.parts.carry.bag, 'solid', true).add(m, this.col.set('#e8d9b8'));
         else this.pools.get('carry-cup', () => this.parts.carry.cup, 'solid', true).add(m, this.col.set('#ffffff'));

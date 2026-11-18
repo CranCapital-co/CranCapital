@@ -3,7 +3,6 @@
 .game { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
 .map-wrap { position: absolute; inset: 0; }
 .map-wrap .map, .game .map { position: absolute; inset: 0; width: 100%; height: 100%; }
-.night { position: absolute; inset: 0; pointer-events: none; background: #4b5fa8; mix-blend-mode: multiply; opacity: 0; transition: opacity 2s; z-index: 1; }
 .cart-ghost { position: absolute; z-index: 3; pointer-events: none; transform: translate(-50%, -50%); font-size: 26px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; border: 3px solid #d9573d; background: rgba(217, 87, 61, 0.2); }
 .cart-ghost[data-ok='1'] { border-color: #1f8a52; background: rgba(31, 138, 82, 0.22); }
 .sale-pop { font-weight: 800; font-size: 14px; color: #1f8a52; text-shadow: 0 1px 0 #fff, 0 0 6px #fff; animation: sale-up 2.4s ease-out forwards; pointer-events: none; }
