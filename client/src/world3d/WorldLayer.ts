@@ -195,6 +195,7 @@ export class WorldLayer implements CustomLayerInterface {
     };
     this.pools = new Pools(this.scene, this.materials);
     this.scene.add(this.hemi, this.sun, this.sun.target);
+    this.setQuality(this.quality);
     this.vehicles = new Vehicles(this);
     this.setSun(new THREE.Vector3(-0.5, 0.8, 0.4));
   }
@@ -221,6 +222,7 @@ export class WorldLayer implements CustomLayerInterface {
 
   setQuality(q: Quality) {
     this.quality = q;
+    if (!this.map) return; // applied when the layer is added
     const pr = Math.min(window.devicePixelRatio || 1, QUALITY[q].pixelRatio);
     if (Math.abs(this.map.getPixelRatio() - pr) > 0.01) this.map.setPixelRatio(pr);
   }

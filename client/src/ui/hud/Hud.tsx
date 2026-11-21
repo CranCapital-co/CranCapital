@@ -47,6 +47,18 @@ export function HudMoney() {
   const me = useGame((s) => s.me)!;
   const open = useGame((s) => s.open);
   const [showWorth, setShowWorth] = useState(false);
+  // During the fast-forward, the counter starts from before you left and rolls up.
+  const [ffCash, setFfCash] = useState<number | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const net = Number((e as CustomEvent).detail?.net) || 0;
+      if (!net) return;
+      setFfCash(useGame.getState().me!.cash - net);
+      setTimeout(() => setFfCash(null), 300);
+    };
+    window.addEventListener('cc:fastforward', on);
+    return () => window.removeEventListener('cc:fastforward', on);
+  }, []);
   useIncome((s) => s.sales.length); // re-render on new sales
   const [, tick] = useState(0);
   useEffect(() => {
@@ -80,7 +92,7 @@ export function HudMoney() {
         <TierRing me={me} />
       </button>
       <button className="hud-money-text" onClick={() => setShowWorth(!showWorth)} aria-label="Show net worth or income">
-        <RollingMoney value={me.cash} className="hud-cash" />
+        <RollingMoney value={ffCash ?? me.cash} className="hud-cash" />
         <span className="hud-sub tnum">
           {showWorth ? (
             <>Net worth {money(me.net_worth, { compact: true })}{next ? ` · next tier at ${money(next.net_worth, { compact: true })}` : ''}</>

@@ -15,7 +15,8 @@ window.addEventListener('cc:weather', (e) => (lastWeather = (e as CustomEvent).d
 window.addEventListener('cc:event', (e) => (lastEvent = (e as CustomEvent).detail?.kind ?? null));
 import { useGame, catalog } from '../lib/store';
 import { rpc } from '../lib/supabase';
-import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, inCity, type CityData } from '../lib/citydata';
+import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, trafficAt, inCity, type CityData } from '../lib/citydata';
+import { trafficLabel } from '../ui/common';
 import { onPresence, track, type Presence } from '../lib/realtime';
 import { localHour, money, ringFor } from '../lib/format';
 import { reportError } from '../lib/errors';
@@ -55,6 +56,9 @@ interface Props {
 
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
+// Cities you've already flown into this visit (the arrival swoop plays once).
+const arrived = new Set<string>();
+
 function dark() {
   const t = document.documentElement.dataset.theme;
   if (t === 'dark') return true;
@@ -67,6 +71,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   const ghostEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [issue, setIssue] = useState<MapIssue>(null);
+  const [arrival, setArrival] = useState<string | null>(null);
   const debugEl = useRef<HTMLPreElement>(null);
   const debug = /[?&#]debug\b|[?&]debug=/.test(location.search + location.hash);
   const cbs = useRef({ onArrive, onPlace, onTaxi });
@@ -76,13 +81,17 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     const g = useGame.getState();
     const m = city.meta;
     const startPos = g.pos ?? (g.me?.lat && g.me.city_id === m.id ? { lat: g.me.lat, lng: g.me.lng! } : { lat: m.start.lat, lng: m.start.lng });
+    const swoop = !arrived.has(m.id) && !reducedMotion(g.me?.prefs);
+    arrived.add(m.id);
     useGame.setState({ pos: startPos });
     const map = new maplibregl.Map({
       container: el.current!,
       style: mapStyle(dark() ? DARK : LIGHT),
       center: [startPos.lng, startPos.lat],
-      zoom: 17.3, // on foot: close in and tilted, like a model city on a table
-      pitch: 55,
+      // On foot: close in and tilted, like a model city on a table. Arriving
+      // in a city starts high above it, looking straight down.
+      zoom: swoop ? 13.4 : 17.3,
+      pitch: swoop ? 0 : 55,
       bearing: -12,
       maxPitch: 70,
       minZoom: 12.5,
@@ -328,16 +337,64 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       if (map.getLayer('walk')) map.setLayoutProperty('walk', 'visibility', placing ? 'visible' : 'none');
       map.getCanvas().style.cursor = mode.kind === 'walk' ? '' : 'crosshair';
       if (ghostEl.current) ghostEl.current.style.display = placing && canHover ? 'block' : 'none';
+      // While placing, a finger drag moves the cart preview instead of the map
+      // (two fingers still pinch and turn), and the parkable streets shimmer.
+      if (placing) map.dragPan.disable();
+      else map.dragPan.enable();
+      clearInterval(shimmer);
+      if (placing && !reducedMotion(useGame.getState().me?.prefs)) {
+        let k = 0;
+        shimmer = setInterval(() => {
+          k += 0.25;
+          if (map.getLayer('walk')) map.setPaintProperty('walk', 'raster-opacity', 0.45 + Math.sin(k) * 0.2);
+        }, 120);
+      }
     };
+
+    let shimmer: any = 0;
+    // Show the cart where the finger is, with how busy the street is.
+    const preview = (pt: { x: number; y: number }, lngLat: { lat: number; lng: number }) => {
+      const el = ghostEl.current;
+      if (!el) return;
+      const spot = city.walk ? nearestWalkable(city, lngLat.lat, lngLat.lng, 18) : null;
+      el.style.display = 'block';
+      el.style.left = pt.x + 'px';
+      el.style.top = pt.y + 'px';
+      el.dataset.ok = spot ? '1' : '0';
+      const tr = trafficAt(city, lngLat.lat, lngLat.lng);
+      const label = trafficLabel(tr);
+      el.dataset.label = spot ? `${label.label} ${'★'.repeat(label.stars)}${'☆'.repeat(3 - label.stars)} · ${tr.toFixed(2)}` : 'Not a street';
+    };
+    let dragPlace: { lat: number; lng: number; moved: boolean } | null = null;
+    map.on('touchstart', (e) => {
+      const mode = useGame.getState().mode;
+      if ((mode.kind !== 'place-cart' && mode.kind !== 'move-cart') || (e.originalEvent as TouchEvent).touches.length > 1) return;
+      dragPlace = { lat: e.lngLat.lat, lng: e.lngLat.lng, moved: false };
+      preview(e.point, e.lngLat);
+    });
+    map.on('touchmove', (e) => {
+      if (!dragPlace) return;
+      if ((e.originalEvent as TouchEvent).touches.length > 1) {
+        dragPlace = null;
+        if (ghostEl.current) ghostEl.current.style.display = 'none';
+        return;
+      }
+      dragPlace = { lat: e.lngLat.lat, lng: e.lngLat.lng, moved: true };
+      preview(e.point, e.lngLat);
+    });
+    map.on('touchend', () => {
+      const d = dragPlace;
+      dragPlace = null;
+      if (ghostEl.current && !canHover) ghostEl.current.style.display = 'none';
+      if (!d?.moved) return; // a plain tap is handled by 'click'
+      const spot = city.walk ? nearestWalkable(city, d.lat, d.lng, 18) : null;
+      if (spot) cbs.current.onPlace?.(spot.lat, spot.lng);
+      else useGame.getState().toast('Carts park on the green streets and paths: drag onto a green spot.', 'error');
+    });
 
     map.on('mousemove', (e) => {
       const mode = useGame.getState().mode;
-      if ((mode.kind === 'place-cart' || mode.kind === 'move-cart') && ghostEl.current) {
-        const ok = walkable(city, e.lngLat.lat, e.lngLat.lng);
-        ghostEl.current.style.left = e.point.x + 'px';
-        ghostEl.current.style.top = e.point.y + 'px';
-        ghostEl.current.dataset.ok = ok ? '1' : '0';
-      }
+      if ((mode.kind === 'place-cart' || mode.kind === 'move-cart') && ghostEl.current && canHover) preview(e.point, e.lngLat);
     });
 
     map.on('click', async (e) => {
@@ -570,6 +627,14 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       rafId = requestAnimationFrame(step);
       (window as any).__ccMap = map; // handy for debugging and browser tests
       loadWorld();
+      if (swoop) {
+        setArrival(m.name);
+        sound.play('whoosh');
+        setTimeout(() => {
+          if (!destroyed) map.flyTo({ center: [startPos.lng, startPos.lat], zoom: 17.3, pitch: 55, bearing: -12, duration: 3200, curve: 1.3, essential: true });
+        }, 400);
+        setTimeout(() => setArrival(null), 3600);
+      }
       onReady?.({
         map,
         flyTo: (lat, lng, zoom) => map.flyTo({ center: [lng, lat], zoom: zoom ?? Math.max(map.getZoom(), 16.2), duration: 1200 }),
@@ -749,6 +814,22 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       }, 2000);
     };
     window.addEventListener('cc:delivery', onDelivery);
+    // Fast-forward: sweep the sun from when you left until now.
+    const onFastForward = (e: Event) => {
+      const hours = Math.min(24, Number((e as CustomEvent).detail?.hours) || 0);
+      if (!living || !hours) return;
+      const end = Date.now();
+      const from = end - hours * 3600_000;
+      const t0 = performance.now();
+      sound.play('whoosh');
+      const tickFf = (t: number) => {
+        const k = Math.min(1, (t - t0) / 3000);
+        living?.update(new Date(from + (end - from) * (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2)));
+        if (k < 1 && !destroyed) requestAnimationFrame(tickFf);
+      };
+      requestAnimationFrame(tickFf);
+    };
+    window.addEventListener('cc:fastforward', onFastForward);
     const onWeather = (e: Event) => living?.setWeather((e as CustomEvent).detail);
     const onEvent = (e: Event) => living?.setEvent((e as CustomEvent).detail?.kind ?? null);
     window.addEventListener('cc:weather', onWeather);
@@ -788,6 +869,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       clearTimeout(baseTimer);
       cancelAnimationFrame(rafId);
       clearInterval(clock);
+      clearInterval(shimmer);
       clearInterval(dbg);
       clearInterval(poll);
       unsubPos();
@@ -796,6 +878,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       window.removeEventListener('cc:sales', onSales);
       window.removeEventListener('cc:built', onBuilt);
       window.removeEventListener('cc:delivery', onDelivery);
+      window.removeEventListener('cc:fastforward', onFastForward);
       window.removeEventListener('cc:weather', onWeather);
       window.removeEventListener('cc:event', onEvent);
       window.removeEventListener('cc:ship', onShip);
@@ -811,8 +894,16 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   return (
     <div className="map-wrap">
       <div ref={el} className="map" />
-      <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }} />
+      <div ref={ghostEl} className="cart-ghost" style={{ display: 'none' }}>
+        <svg width="26" height="26" aria-hidden><use href="#i-cart" /></svg>
+      </div>
       {debug && <pre ref={debugEl} className="debug-overlay" />}
+      {arrival && (
+        <div className="arrival" aria-live="polite">
+          <span className="arrival-kicker">Welcome to</span>
+          <span className="arrival-city">{arrival}</span>
+        </div>
+      )}
       {issue && (
         <div className="map-issue" role="status">
           <strong>{issue === 'slow' ? 'The street map is slow to load.' : 'The street map can’t load on this device.'}</strong>

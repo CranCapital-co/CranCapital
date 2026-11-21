@@ -12,6 +12,7 @@ import { Dock } from '../ui/hud/Dock';
 import { MapTools } from '../ui/hud/MapTools';
 import { Icon } from '../ui/Icon';
 import { Moments } from '../ui/Moments';
+import { reducedMotion } from '../lib/settings';
 import { trafficLabel } from '../ui/common';
 import type { Me } from '../lib/types';
 
@@ -91,6 +92,26 @@ export default function World() {
   const api = useRef<MapApi | null>(null);
   const cityId = me.city_id ?? me.travel_from ?? 'london';
   const inset = useGame((s) => s.inset);
+  // Coming back: a 3-second fast-forward of the city (the sun sweeps across,
+  // the cash counter rolls up), then the summary. A tap skips it.
+  const [ffDone, setFfDone] = useState(false);
+  useEffect(() => {
+    if (!away) return;
+    if (reducedMotion(me.prefs) || !away.hours) {
+      setFfDone(true);
+      return;
+    }
+    setFfDone(false);
+    const start = setTimeout(() => window.dispatchEvent(new CustomEvent('cc:fastforward', { detail: { hours: Number(away.hours), net: Number(away.net ?? 0) } })), 1200);
+    const done = setTimeout(() => setFfDone(true), 4400);
+    const skip = () => setFfDone(true);
+    window.addEventListener('pointerdown', skip, { once: true });
+    return () => {
+      clearTimeout(start);
+      clearTimeout(done);
+      window.removeEventListener('pointerdown', skip);
+    };
+  }, [away]);
   // New players: the Build button glows until their first business exists.
   const refreshKey = useGame((s) => s.refreshKey);
   const [hasBusiness, setHasBusiness] = useState(true);
@@ -285,7 +306,7 @@ export default function World() {
         </Modal>
       )}
 
-      {away && <AwayCard away={away} onClose={() => set({ away: null })} />}
+      {away && ffDone && <AwayCard away={away} onClose={() => set({ away: null })} />}
       <Moments api={api} />
     </div>
   );

@@ -4,6 +4,7 @@ import { money, num, pct, unitPrice } from '../lib/format';
 import { Footer } from './Pages';
 import '../styles/landing.css';
 import { GoodIcon, Icon } from '../ui/Icon';
+import LandingHero from './LandingHero';
 const TIER_ACCENT = ['#e3694d', '#2f8f6e', '#6c9a3d', '#8a6b4a', '#4b6a8c', '#6b4b8c'];
 
 const TIERS = [
@@ -120,7 +121,7 @@ export default function Landing() {
           </div>
           <p className="tiny muted">Made for iPad: add it to your Home Screen to play full screen. Works in any modern browser. Money in the game can’t be bought.</p>
         </div>
-        <Skyline />
+        <LandingHero fallback={<Skyline />} />
       </header>
 
       <section className="stats-band" aria-label="Live world stats">
