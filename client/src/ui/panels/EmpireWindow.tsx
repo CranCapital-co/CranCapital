@@ -4,6 +4,7 @@ import Dashboard from './Dashboard';
 const BusinessesWindow = lazyPanel(() => import('./BusinessesWindow'));
 const InventoryWindow = lazyPanel(() => import('./InventoryWindow'));
 const BankWindow = lazyPanel(() => import('./BankWindow'));
+const CityJobs = lazyPanel(() => import('./CityJobs'));
 
 export default function EmpireWindow({ params, api, city }: { params?: any; api: any; city: any }) {
   return (
@@ -17,6 +18,7 @@ export default function EmpireWindow({ params, api, city }: { params?: any; api:
         ['businesses', 'Businesses', BusinessesWindow],
         ['storage', 'Storage', InventoryWindow],
         ['bank', 'Bank', BankWindow],
+        ['city', 'City jobs', CityJobs],
       ]}
     />
   );

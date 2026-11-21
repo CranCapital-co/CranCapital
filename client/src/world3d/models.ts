@@ -651,3 +651,55 @@ export function vehicleParts() {
     ]),
   };
 }
+
+// ---------------- shop decorations (looks only) ----------------
+// Drawn on top of a business's own model, in its model space (front = +z).
+export function decorParts(): Record<string, { geo: THREE.BufferGeometry; glow?: THREE.BufferGeometry }> {
+  const flowers = (x: number) => group([box(1.2, 0.55, 0.5, WOOD_D, { at: [x, 0, 0] }), ...[0, 1, 2].map((i) => ball(0.22, ['#e3694d', '#f2c14b', '#e58fb0'][i], { at: [x - 0.35 + i * 0.35, 0.65, 0] }))]);
+  return {
+    flower_boxes: { geo: group([flowers(-2.6), flowers(2.6)]).translate(0, 0, 3.2) },
+    potted_trees: { geo: group([-1, 1].flatMap((s) => [cyl(0.45, 0.35, 0.8, '#c96f4a', { at: [s * 3.4, 0, 2.6] }, 8), cone(0.9, 2.4, '#3f7a3a', { at: [s * 3.4, 0.8, 2.6] }, 7)])) },
+    gold_awning: { geo: awning(5.2, 2.2, ['#e8b23a', '#fff6dc'], { at: [0, 5.1, 1.0] }, 7, 0.35) },
+    bunting: { geo: group([0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => cone(0.28, 0.5, ['#e3694d', '#f2c14b', '#3f8ed6', '#2f8f6e'][i % 4], { at: [-3.2 + i * 0.8, 5.6 - Math.sin((i / 8) * Math.PI) * 0.5, 2.6], rot: [Math.PI, 0, 0] }, 3))) },
+    string_lights: { geo: box(0.01, 0.01, 0.01, '#000000'), glow: group([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => ball(0.14, '#ffd36b', { at: [-3.5 + i * 0.7, 5.3 - Math.sin((i / 10) * Math.PI) * 0.6, 3.0] }))) },
+    neon_sign: { geo: box(3.4, 1.2, 0.15, '#2b2f33', { at: [0, 6.3, 0.6] }), glow: group([box(3.0, 0.16, 0.05, '#ff4fd8', { at: [0, 6.75, 0.7] }), box(3.0, 0.16, 0.05, '#4ff3ff', { at: [0, 6.45, 0.7] }), box(0.16, 0.7, 0.05, '#ff4fd8', { at: [-1.4, 6.45, 0.7] })]) },
+    red_carpet: { geo: group([box(2.0, 0.06, 4.5, '#b3242a', { at: [0, 0, 3.4] }), ...[-1, 1].flatMap((s) => [cyl(0.08, 0.1, 1.0, '#c9a227', { at: [s * 1.4, 0, 1.8] }, 6), cyl(0.08, 0.1, 1.0, '#c9a227', { at: [s * 1.4, 0, 5.0] }, 6), box(0.06, 0.06, 3.2, '#9b2d2d', { at: [s * 1.4, 0.85, 3.4] })])]) },
+  };
+}
+
+// ---------------- city projects ----------------
+// A market hall that rises with the city's contributions, then opens with
+// flags and lit windows.
+export function marketHall(progress: number): { base: THREE.BufferGeometry; glow?: THREE.BufferGeometry } {
+  const k = Math.max(0, Math.min(1, progress));
+  const done = k >= 1;
+  const parts: THREE.BufferGeometry[] = [box(34, 0.6, 22, '#c9c3b6')];
+  const glows: THREE.BufferGeometry[] = [];
+  const cols = 8;
+  const h = 9;
+  const shown = Math.max(1, Math.round(cols * Math.min(1, k * 1.25)));
+  for (let i = 0; i < cols; i++) {
+    const x = -15 + (i * 30) / (cols - 1);
+    if (i < shown) parts.push(box(0.9, h * Math.min(1, k * 1.6), 0.9, '#e8e2d2', { at: [x, 0.6, 10] }), box(0.9, h * Math.min(1, k * 1.6), 0.9, '#e8e2d2', { at: [x, 0.6, -10] }));
+  }
+  if (k > 0.55) {
+    // The roof goes on.
+    const r = Math.min(1, (k - 0.55) / 0.45);
+    parts.push(box(34 * r, 0.8, 22, '#9b4a3a', { at: [-17 + 17 * r, h + 0.6, 0] }));
+    if (r > 0.6) parts.push(gable(22, 5, 34 * r, '#b5402f', { at: [-17 + 17 * r, h + 1.4, 0], rot: [0, Math.PI / 2, 0] }));
+  }
+  if (done) {
+    parts.push(box(30, 6, 0.3, '#e8dcc4', { at: [0, 0.6, 9.6] }), box(8, 1.4, 0.4, '#2f8f6e', { at: [0, 7.2, 10.4] }), ...[-14, 14].flatMap((x) => [cyl(0.1, 0.1, 6, '#ddd', { at: [x, h + 1, 11] }, 4), box(2, 1.3, 0.05, '#e8b23a', { at: [x + 1.05, h + 5.8, 11] })]));
+    for (let i = 0; i < 7; i++) glows.push(box(2.4, 2.8, 0.1, '#ffe3a1', { at: [-12 + i * 4, 2.2, 9.8] }));
+    // stalls in front
+    for (let i = 0; i < 4; i++) parts.push(awning(4, 2.4, [['#e3694d', '#2f8f6e', '#3f8ed6', '#e8b23a'][i], '#f6efe0'], { at: [-12 + i * 8, 3.4, 14] }, 5, 0.3), box(3.6, 1.0, 1.6, WOOD, { at: [-12 + i * 8, 0, 14] }));
+  } else {
+    // Scaffolding and a crane while it's going up.
+    parts.push(...[-17, 17].flatMap((x) => [box(0.25, h + 3, 0.25, '#c9a227', { at: [x, 0.6, 11] }), box(0.25, h + 3, 0.25, '#c9a227', { at: [x, 0.6, -11] })]), box(0.6, 22, 0.6, '#e8b23a', { at: [20, 0, -12] }), box(16, 0.6, 0.6, '#e8b23a', { at: [14, 22, -12] }));
+  }
+  return { base: group(parts), glow: glows.length ? group(glows) : undefined };
+}
+
+export function rivalFlag(color: string) {
+  return group([cyl(0.06, 0.06, 3.2, '#ddd', {}, 4), box(1.3, 0.8, 0.05, color, { at: [0.68, 2.7, 0] }), box(0.5, 0.5, 0.06, '#ffffff', { at: [0.68, 2.7, 0.01], rot: [0, 0, Math.PI / 4] })]);
+}

@@ -12,6 +12,7 @@ import { Dock } from '../ui/hud/Dock';
 import { MapTools } from '../ui/hud/MapTools';
 import { Icon } from '../ui/Icon';
 import { Moments } from '../ui/Moments';
+import { PhotoMode } from '../ui/PhotoMode';
 import { reducedMotion } from '../lib/settings';
 import { trafficLabel } from '../ui/common';
 import type { Me } from '../lib/types';
@@ -95,6 +96,19 @@ export default function World() {
   // Coming back: a 3-second fast-forward of the city (the sun sweeps across,
   // the cash counter rolls up), then the summary. A tap skips it.
   const [ffDone, setFfDone] = useState(false);
+  // Photo mode (from More) and the empire tour banner.
+  const [photo, setPhoto] = useState(false);
+  const [tour, setTour] = useState<{ name: string; business: string; i: number; n: number } | null>(null);
+  useEffect(() => {
+    const onPhoto = () => setPhoto(true);
+    const onTour = (e: Event) => setTour((e as CustomEvent).detail);
+    window.addEventListener('cc:photo', onPhoto);
+    window.addEventListener('cc:tour', onTour);
+    return () => {
+      window.removeEventListener('cc:photo', onPhoto);
+      window.removeEventListener('cc:tour', onTour);
+    };
+  }, []);
   useEffect(() => {
     if (!away) return;
     if (reducedMotion(me.prefs) || !away.hours) {
@@ -186,7 +200,7 @@ export default function World() {
   const Win = win ? WINDOWS[win.id] : null;
 
   return (
-    <div className="game">
+    <div className={`game ${photo ? 'photo' : ''}`}>
       {city && (
         <GameMap
           key={city.meta.id}
@@ -308,6 +322,13 @@ export default function World() {
 
       {away && ffDone && <AwayCard away={away} onClose={() => set({ away: null })} />}
       <Moments api={api} />
+      {photo && <PhotoMode api={api} onClose={() => setPhoto(false)} />}
+      {tour && (
+        <div className="mode-banner tour-banner" role="status">
+          <Icon name="eye" size={20} /> Visiting {tour.name}’s empire · {tour.business} ({tour.i} of {tour.n})
+          <button className="btn small" onClick={() => setTour(null)}>Stop</button>
+        </div>
+      )}
     </div>
   );
 }

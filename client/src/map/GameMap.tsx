@@ -44,6 +44,11 @@ export interface MapApi {
   // A big moment: cheer, then circle the camera around your empire.
   celebrate: () => void;
   emote: (anim: 'wave' | 'cheer') => void;
+  // Visit an empire: the camera tours a player's businesses in this city.
+  tour: (playerNo: number, name: string) => void;
+  // Photo mode: pin the time of day (null = now) and take a picture.
+  setPhotoHour: (hour: number | null) => void;
+  snapshot: () => Promise<string>;
 }
 
 interface Props {
@@ -252,7 +257,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
             };
           }),
         });
-        lastBiz = biz.map((x) => ({ id: x.id, kind: x.kind, tier: types.find((tt) => tt.id === x.kind)?.tier ?? 1, level: x.level, status: x.status, mine: x.mine, lat: x.lat, lng: x.lng, name: x.name, crop: x.crop, fill: x.fill, resource: x.resource }));
+        lastBiz = biz.map((x) => ({ id: x.id, kind: x.kind, tier: types.find((tt) => tt.id === x.kind)?.tier ?? 1, level: x.level, status: x.status, mine: x.mine, lat: x.lat, lng: x.lng, name: x.name, crop: x.crop, fill: x.fill, resource: x.resource, decor: x.decor, owner_no: x.owner_no }));
         world?.setBusinesses(lastBiz);
         for (const id of stateIds) map.setFeatureState({ source: 'ofm', sourceLayer: 'building', id }, { status: null });
         stateIds = [];
@@ -643,6 +648,48 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         setPadding: (inset) =>
           map.easeTo({ padding: { top: 0, left: 0, right: inset.right, bottom: inset.bottom }, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 450 }),
         emote: (anim) => world?.emote(anim),
+        tour: async (playerNo, name) => {
+          const bb = m.bbox;
+          const all = await rpc<any[]>('map_businesses', { p_city: m.id, p_w: bb[0], p_s: bb[1], p_e: bb[2], p_n: bb[3] }).catch(() => []);
+          const theirs = all.filter((b) => b.owner_no === playerNo).slice(0, 12);
+          if (!theirs.length) {
+            useGame.getState().toast(`${name} has nothing in ${m.name} to visit.`, 'info');
+            return;
+          }
+          let stop = false;
+          const halt = () => {
+            stop = true;
+            window.dispatchEvent(new CustomEvent('cc:tour', { detail: null }));
+          };
+          map.once('mousedown', halt);
+          map.once('touchstart', halt);
+          for (let i = 0; i < theirs.length && !stop && !destroyed; i++) {
+            const b = theirs[i];
+            window.dispatchEvent(new CustomEvent('cc:tour', { detail: { name, business: b.name, i: i + 1, n: theirs.length } }));
+            map.flyTo({ center: [b.lng, b.lat], zoom: 17.6, pitch: 58, bearing: map.getBearing() + 40, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1800, essential: true });
+            await new Promise((r) => setTimeout(r, 4200));
+          }
+          if (!stop) halt();
+        },
+        setPhotoHour: (hour) => {
+          if (!living) return;
+          if (hour == null) return living.update(new Date());
+          // That hour of today in the city.
+          const now = new Date();
+          const local = localHour(m.tz, now) + now.getMinutes() / 60;
+          living.update(new Date(now.getTime() + (hour - local) * 3600_000));
+        },
+        snapshot: () =>
+          new Promise<string>((resolve) => {
+            map.once('render', () => {
+              try {
+                resolve(map.getCanvas().toDataURL('image/png'));
+              } catch {
+                resolve('');
+              }
+            });
+            map.triggerRepaint();
+          }),
         celebrate: async () => {
           world?.emote('cheer');
           const mine = await rpc<any[]>('my_businesses').catch(() => []);
@@ -720,6 +767,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         living.setWeather(lastWeather);
         living.setEvent(lastEvent);
         (window as any).__ccLiving = living;
+        loadProjects();
+        findRivals();
         // Badges hand over to models as you zoom in; names float above heads.
         map.setPaintProperty('me', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
         map.setPaintProperty('players', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
@@ -733,6 +782,42 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         reportError('3d', 'world layer failed: ' + String((err as Error)?.message ?? err));
       }
     };
+    // City projects rise on the map as players give goods.
+    const loadProjects = () =>
+      rpc<any[]>('city_projects', { p_city: m.id })
+        .then((list) => world?.setProjects(list.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, progress: Number(p.progress ?? 0), status: p.status, name: p.name }))))
+        .catch(() => {});
+    // Street rivals: another player's cart nearby selling the same dish.
+    const menus = new Map<number, { at: number; ids: string[] }>();
+    const menuOf = async (id: number) => {
+      const c = menus.get(id);
+      if (c && Date.now() - c.at < 300_000) return c.ids;
+      const d = await rpc<any>('business_detail', { p_id: id }).catch(() => null);
+      const ids = ((d?.menu ?? d?.settings?.menu ?? []) as any[]).map((x) => x.id);
+      menus.set(id, { at: Date.now(), ids });
+      return ids;
+    };
+    const findRivals = async () => {
+      if (!world) return;
+      const rivals = new Set<number>();
+      const carts = lastBiz.filter((b) => b.kind === 'cart' && b.status === 'open');
+      for (const mine of carts.filter((b) => b.mine).slice(0, 5)) {
+        const near = carts.filter((b) => !b.mine && distM(b.lat, b.lng, mine.lat, mine.lng) < 60).slice(0, 4);
+        if (!near.length) continue;
+        const a = await menuOf(mine.id);
+        for (const o of near) {
+          const bIds = await menuOf(o.id);
+          if (a.some((x) => bIds.includes(x))) {
+            rivals.add(mine.id);
+            rivals.add(o.id);
+          }
+        }
+      }
+      world.rivals = rivals;
+    };
+    const rivalTimer = setInterval(findRivals, 90_000);
+    const projectTimer = setInterval(loadProjects, 120_000);
+
     const unsubSettings = useSettings.subscribe((s2, prev) => {
       if (!world) return;
       if (s2.graphics !== prev.graphics) {
@@ -869,6 +954,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       clearTimeout(baseTimer);
       cancelAnimationFrame(rafId);
       clearInterval(clock);
+      clearInterval(rivalTimer);
+      clearInterval(projectTimer);
       clearInterval(shimmer);
       clearInterval(dbg);
       clearInterval(poll);

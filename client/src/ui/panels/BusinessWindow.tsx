@@ -12,7 +12,7 @@ import { ingredientNeeds, type StorageCity } from '../../lib/restock';
 import { sound } from '../../audio/sound';
 import { BUSINESS_ICON } from '../icons';
 
-type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'manage';
+type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'decorate' | 'manage';
 
 export default function BusinessWindow({ params, api }: { params: { id: number }; api?: any }) {
   const me = useGame((s) => s.me)!;
@@ -39,6 +39,7 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
   if (!customer && t.id !== 'port' && t.id !== 'bank') tabs.push(['production', 'Production']);
   if (t.id === 'port') tabs.push(['shipping', 'Shipping']);
   if (t.id === 'bank') tabs.push(['bank', 'Bank']);
+  if (b.status !== 'abandoned') tabs.push(['decorate', 'Decorate']);
   tabs.push(['manage', 'Manage']);
 
   const done = async () => {
@@ -70,6 +71,7 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
         {flagList(b.flags).map((f) => <div key={f} className="notice red small">{f}{f === 'Fit-out incomplete' && b.flags.missing ? `: needs ${b.flags.missing.join(', ')}` : ''}</div>)}
         <Tabs tabs={tabs} value={tab} onChange={setTab} />
         {tab === 'overview' && <NextStep b={b} t={t} onTab={setTab} onDone={done} />}
+        {tab === 'overview' && b.kind === 'cart' && <Rivals b={b} />}
         {tab === 'overview' && <Overview b={b} t={t} />}
         {tab === 'menu' && <MenuEditor b={b} onSaved={done} />}
         {tab === 'stock' && <StockTab b={b} />}
@@ -78,6 +80,7 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
         {tab === 'production' && <ProductionTab b={b} t={t} onSaved={done} />}
         {tab === 'shipping' && <ShippingTab b={b} />}
         {tab === 'bank' && <BankTab b={b} />}
+        {tab === 'decorate' && <DecorateTab b={b} />}
         {tab === 'manage' && <ManageTab b={b} t={t} onSaved={done} />}
       </div>
     </Window>
@@ -756,5 +759,100 @@ function ShopFront({ b }: { b: Business }) {
         </button>
       </div>
     </Window>
+  );
+}
+
+// Street rivals: other players' carts nearby selling the same dishes, with a
+// friendly price comparison (menus are public on every shop front).
+function Rivals({ b }: { b: Business }) {
+  const cat = catalog();
+  const { data } = useApi(async () => {
+    const d = 0.0008;
+    const near = (await rpc<any[]>('map_businesses', { p_city: b.city_id, p_w: b.lng - d * 1.6, p_s: b.lat - d, p_e: b.lng + d * 1.6, p_n: b.lat + d }))
+      .filter((x) => x.kind === 'cart' && !x.mine && x.status === 'open')
+      .slice(0, 4);
+    const mineMenu: { id: string; price: number }[] = b.settings?.menu ?? [];
+    const out: { name: string; owner: string; item: string; theirs: number; ours: number }[] = [];
+    for (const o of near) {
+      const det = await rpc<any>('business_detail', { p_id: o.id }).catch(() => null);
+      for (const m of (det?.menu ?? []) as { id: string; price: number }[]) {
+        const ours = mineMenu.find((x) => x.id === m.id);
+        if (ours) out.push({ name: o.name, owner: o.owner_name, item: m.id, theirs: m.price, ours: ours.price });
+      }
+    }
+    return out;
+  }, [b.id]);
+  if (!data?.length) return null;
+  return (
+    <div className="card stack tight rivals">
+      <strong className="row"><Icon name="flag" accent="#c9302c" /> Street rivals nearby</strong>
+      {data.slice(0, 4).map((r, i) => {
+        const name = cat.menu_items.find((m) => m.id === r.item)?.name ?? r.item;
+        const diff = r.theirs - r.ours;
+        return (
+          <div key={i} className="small row between">
+            <span>
+              <b>{r.name}</b> <span className="muted">({r.owner})</span> sells {name} for {money(r.theirs)}
+            </span>
+            <span className={`tnum ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'muted'}`}>{diff === 0 ? 'same as you' : diff > 0 ? `▲ you're ${money(diff)} cheaper` : `▼ you're ${money(-diff)} dearer`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Decorations: looks only, bought with loyalty points.
+function DecorateTab({ b }: { b: Business }) {
+  const me = useGame((s) => s.me)!;
+  const { data: items } = useApi(() => rpc<any[]>('decor_catalog'), []);
+  const { data: onMap, reload } = useApi(async () => {
+    const d = 0.0005;
+    const list = await rpc<any[]>('map_businesses', { p_city: b.city_id, p_w: b.lng - d, p_s: b.lat - d, p_e: b.lng + d, p_n: b.lat + d });
+    return (list.find((x) => x.id === b.id)?.decor ?? []) as string[];
+  }, [b.id]);
+  const owned = new Set(onMap ?? []);
+  if (!items) return <Loading />;
+  return (
+    <div className="stack">
+      <p className="small muted">Decorations change how it looks on the map, never how much it sells. You have <b>{me.loyalty_points}</b> loyalty points (earn them from daily goals, city projects and days played).</p>
+      <div className="decor-grid">
+        {items.map((it) => (
+          <div key={it.id} className={`decor-item ${owned.has(it.id) ? 'owned' : ''}`}>
+            <Icon name={it.kind === 'flowers' ? 'plant' : it.kind === 'lights' ? 'lamp' : it.kind === 'sign' ? 'sparkle' : 'shop'} size={30} accent="var(--gold)" />
+            <b className="small">{it.name}</b>
+            {owned.has(it.id) ? (
+              <button
+                className="btn tiny ghost"
+                onClick={async () => {
+                  if (await act(() => rpc('remove_decor', { p_business: b.id, p_item: it.id }), 'Taken down.')) {
+                    reload();
+                    useGame.getState().bump();
+                  }
+                }}
+              >
+                Take down
+              </button>
+            ) : (
+              <button
+                className="btn tiny gold"
+                disabled={me.loyalty_points < it.cost_points}
+                onClick={async () => {
+                  const r = await act(() => rpc<any>('buy_decor', { p_business: b.id, p_item: it.id }), `${it.name} added!`);
+                  if (r) {
+                    sound.play('badge');
+                    useGame.setState({ me: { ...me, loyalty_points: r.points_left } });
+                    reload();
+                    useGame.getState().bump();
+                  }
+                }}
+              >
+                {it.cost_points} pts
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

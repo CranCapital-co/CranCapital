@@ -24,6 +24,7 @@ export default function MoreWindow() {
         {row('account', 'Account', 'Your look, sound, graphics, privacy and data', () => open('account'))}
         {row('plane', 'Travel', 'Fly to another city', () => open('travel'))}
         {row('bell', 'Notifications', 'Everything that happened while you were busy', () => open('notifications'))}
+        {row('camera', 'Photo mode', 'Hide the interface, set the time of day, save a picture', () => window.dispatchEvent(new CustomEvent('cc:photo')))}
         {me.role !== 'player' && row('staff', 'Staff', 'Reports, moderation and events', () => open('mod'))}
         <div className="card soft row between">
           <span className="row">

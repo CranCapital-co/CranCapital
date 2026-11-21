@@ -10,7 +10,7 @@ import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from
 import type { CityData } from '../lib/citydata';
 import { Pools } from './pool';
 import { charParts, accentParts, hatParts, walkerParts, carryParts, groundParts, blobShadow, OUTFITS, SKIN_TONES, CHAR, type Outfit } from './people';
-import { businessModel, propParts, ROOM_KINDS, type BizState, type ModelDef } from './models';
+import { businessModel, propParts, decorParts, marketHall, rivalFlag, ROOM_KINDS, type BizState, type ModelDef } from './models';
 import { box } from './kit';
 import { Vehicles } from './vehicles';
 import { CrowdSim, type ShopSpot, type Walker } from './crowd3d';
@@ -29,7 +29,10 @@ export interface BizInfo {
   crop?: string | null;
   fill?: number;
   resource?: string | null;
+  decor?: string[] | null;
 }
+
+export interface ProjectInfo { id: number; lat: number; lng: number; progress: number; status: string; name: string }
 
 export interface CharInfo {
   key: string; // 'me' or 'p:<player_no>'
@@ -88,6 +91,9 @@ export class WorldLayer implements CustomLayerInterface {
   private gridAz = -1;
   private biz = new Map<number, BizState3D>();
   private pendingBuilds = new Set<number>();
+  private projects: { info: ProjectInfo; pos: THREE.Vector3; key: string; geo: { base: THREE.BufferGeometry; glow?: THREE.BufferGeometry } }[] = [];
+  rivals = new Set<number>(); // business ids that show a rival flag
+  private decor = decorParts();
   private chars = new Map<string, CharState>();
   private particles: Particle[] = [];
   private last = 0;
@@ -374,6 +380,16 @@ export class WorldLayer implements CustomLayerInterface {
     return this.biz.values();
   }
 
+  // City projects: a building site that rises with contributions, then a landmark.
+  setProjects(list: ProjectInfo[]) {
+    this.projects = list.map((p) => {
+      const step = p.status === 'done' ? 1 : Math.floor(Math.min(0.99, p.progress) * 10) / 10;
+      const key = `${p.id}:${step}`;
+      const cur = this.projects.find((x) => x.key === key);
+      return cur ? { ...cur, info: p } : { info: p, pos: this.local(p.lat, p.lng), key, geo: marketHall(step) };
+    });
+  }
+
   // Tap picking: the business whose model is under the point, if any.
   pick(x: number, y: number): BizInfo | null {
     if (this.map.getZoom() < 15) return null;
@@ -416,6 +432,12 @@ export class WorldLayer implements CustomLayerInterface {
       const radius = Math.min(420, Math.max(80, (Math.hypot(b.getEast() - b.getWest(), b.getNorth() - b.getSouth()) * 0.5 * this.city.meta.ky) * 0.6));
       const cLocal = this.gridToLocal(cg.gx, cg.gy);
       this.drawBusinesses(dt, close, cLocal, radius * 1.6);
+      for (const pr of this.projects) {
+        if (Math.hypot(pr.pos.x - cLocal.x, pr.pos.z - cLocal.z) > radius * 2) continue;
+        this.tmp.compose(pr.pos, this.q.identity(), this.sc.set(1, 1, 1));
+        this.pools.get('p:' + pr.key, () => pr.geo.base).add(this.tmp);
+        if (pr.geo.glow) this.pools.get('pg:' + pr.key, () => pr.geo.glow!, 'glow').add(this.tmp);
+      }
       if (zoom >= 15) this.drawChars(dt);
       if (close && this.city.walk) {
         this.crowd.setView(cg.gx, cg.gy, radius, this.hourLevel, q.people, this.eventMult);
@@ -499,6 +521,16 @@ export class WorldLayer implements CustomLayerInterface {
       this.tmp.compose(b.pos, this.q, this.sc.set(s, s, s));
       this.pools.get('b:' + b.model.key, () => b.model.base).add(this.tmp);
       if (b.model.glow) this.pools.get('g:' + b.model.key, () => b.model.glow!, 'glow').add(this.tmp);
+      for (const d of b.info.decor ?? []) {
+        const part = this.decor[d];
+        if (!part) continue;
+        this.pools.get('d:' + d, () => part.geo).add(this.tmp);
+        if (part.glow) this.pools.get('dg:' + d, () => part.glow!, 'glow').add(this.tmp);
+      }
+      if (this.rivals.has(b.info.id)) {
+        this.tmp2.compose(this.v.set(b.pos.x, b.model.height * b.scale + 0.5, b.pos.z), this.q, this.sc.set(1.6, 1.6, 1.6));
+        this.pools.get(b.info.mine ? 'rival-mine' : 'rival', () => rivalFlag(b.info.mine ? '#e8b23a' : '#c9302c')).add(this.tmp2);
+      }
       const r = b.model.radius * b.scale;
       if (!ROOM_KINDS.has(b.info.kind)) {
         this.tmp2.compose(this.v.set(b.pos.x, 0, b.pos.z), this.q, this.sc.set(r, 1, r * 0.8));
