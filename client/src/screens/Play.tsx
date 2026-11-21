@@ -309,7 +309,8 @@ export default function Play() {
     subscribeUser(me.id, (ev, payload) => {
       const g = useGame.getState();
       if (ev === 'notification') {
-        sound.play('notify');
+        window.dispatchEvent(new CustomEvent('cc:notification', { detail: payload }));
+        if (payload?.kind !== 'badge') sound.play('notify');
         g.toast(payload.title + (payload.body ? ` — ${payload.body}` : ''), 'info');
         if (g.me) g.set({ me: { ...g.me, unread: (g.me.unread ?? 0) + 1 } });
       } else if (ev === 'sales') {

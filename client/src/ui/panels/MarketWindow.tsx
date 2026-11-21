@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { sound } from '../../audio/sound';
 import { rpc } from '../../lib/supabase';
 import { useGame, act, catalog, cityName } from '../../lib/store';
 import { money, unitPrice, pct, num, ago } from '../../lib/format';
-import { Window, useApi, Loading, Candles, Tabs, Field } from '../components';
+import { Window, useApi, Loading, Tabs, Field } from '../components';
 import { refreshMe } from '../common';
 import { GoodIcon } from '../Icon';
 
@@ -64,33 +65,22 @@ function GoodDetail({ good }: { good: string }) {
         <span className="small muted">base {unitPrice(g.base_price)}</span>
       </div>
       <p className="small muted" style={{ margin: 0 }}>{g.description}</p>
-      <Candles candles={d.candles} />
-      <div className="book">
-        <div>
-          <div className="tiny muted">Buyers</div>
-          <table className="list">
-            <tbody>
-              {d.bids.map((r: any) => <tr key={'b' + r.price}><td className="bid num">{unitPrice(r.price)}</td><td className="r num">{num(r.qty)}</td></tr>)}
-              <tr><td className="bid num">{unitPrice(d.npc.bid)}</td><td className="r tiny muted">market traders</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <div className="tiny muted">Sellers</div>
-          <table className="list">
-            <tbody>
-              {d.asks.map((r: any) => <tr key={'a' + r.price}><td className="ask num">{unitPrice(r.price)}</td><td className="r num">{num(r.qty)}</td></tr>)}
-              <tr><td className="ask num">{unitPrice(d.npc.ask)}</td><td className="r tiny muted">market traders</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PriceChart candles={d.candles} trades={d.trades} now={(d.npc.bid + d.npc.ask) / 2} />
+      <DepthBook bids={d.bids} asks={d.asks} npc={d.npc} />
 
       <div className="card stack">
         <Tabs tabs={[['buy', 'Buy'], ['sell', 'Sell']]} value={side} onChange={setSide} />
         <div className="grid2">
           <Field label="Quantity" hint={side === 'sell' ? `You have ${num(have)} in ${cityName(city)}` : undefined}>
             <input className="input" type="number" min={1} value={qty} onChange={(e) => setQty(Math.max(0, Math.floor(Number(e.target.value))))} />
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(qtyToSlider(qty, side === 'sell' ? Math.max(10, have) : 100000))}
+              onChange={(e) => setQty(sliderToQty(Number(e.target.value), side === 'sell' ? Math.max(10, have) : 100000))}
+              aria-label="Quantity"
+            />
           </Field>
           <Field label={side === 'buy' ? 'Deliver to' : 'From storage in'}>
             <select className="input" value={city} onChange={(e) => setCity(e.target.value)}>
@@ -108,8 +98,22 @@ function GoodDetail({ good }: { good: string }) {
           </Field>
         ) : (
           quote && (
-            <div className="small">
-              Market order now: about <b>{money(quote.total)}</b> ({unitPrice(quote.avg)} each{side === 'sell' ? ', after the 1% fee' : ''}). Big orders move the price.
+            <div className="order-total">
+              <div className="row between">
+                <span>{num(qty)} × about {unitPrice(quote.avg)}</span>
+                <span className="tnum">{money(side === 'sell' ? Math.round(quote.total / (1 - cat.config.trade_fee_pct / 100)) : quote.total)}</span>
+              </div>
+              {side === 'sell' && (
+                <div className="row between small muted">
+                  <span>{cat.config.trade_fee_pct}% exchange fee</span>
+                  <span className="tnum">− {money(Math.round(quote.total / (1 - cat.config.trade_fee_pct / 100)) - quote.total)}</span>
+                </div>
+              )}
+              <div className="row between total-line">
+                <b>{side === 'buy' ? 'You pay' : 'You get'}</b>
+                <b className="tnum">{money(quote.total)}</b>
+              </div>
+              <div className="tiny muted">Big orders move the price; this is an estimate until it fills.</div>
             </div>
           )
         )}
@@ -128,6 +132,7 @@ function GoodDetail({ good }: { good: string }) {
               }
             );
             if (r) {
+              sound.play(side === 'buy' ? 'buy' : 'sell');
               reload();
               refreshMe();
             }
@@ -165,6 +170,102 @@ function GoodDetail({ good }: { good: string }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// Quantity slider on a log scale: fine control for small amounts, reach for big ones.
+function sliderToQty(v: number, max: number) {
+  if (v <= 0) return 1;
+  return Math.max(1, Math.round(Math.pow(max, v / 100)));
+}
+function qtyToSlider(q: number, max: number) {
+  return q <= 1 ? 0 : Math.min(100, (Math.log(q) / Math.log(max)) * 100);
+}
+
+// Price over the last hour (from trades), 24 hours or 7 days (hourly candles).
+function PriceChart({ candles, trades, now }: { candles: any[]; trades: any[]; now: number }) {
+  const [range, setRange] = useState<'1h' | '24h' | '7d'>('24h');
+  const pts = useMemo(() => {
+    const t = Date.now();
+    if (range === '1h') {
+      const p = trades.filter((x) => t - new Date(x.at).getTime() < 3600_000).map((x) => ({ t: new Date(x.at).getTime(), v: x.price })).reverse();
+      return [...p, { t, v: now }];
+    }
+    const span = range === '24h' ? 24 : 168;
+    const step = range === '24h' ? 1 : 6;
+    const out: { t: number; v: number; h: number; l: number }[] = [];
+    for (const c of candles) {
+      const ct = new Date(c.t).getTime();
+      if (t - ct > span * 3600_000) continue;
+      const last = out[out.length - 1];
+      if (last && step > 1 && ct - last.t < step * 3600_000) {
+        last.v = c.c;
+        last.h = Math.max(last.h, c.h);
+        last.l = Math.min(last.l, c.l);
+      } else out.push({ t: ct, v: c.c, h: c.h, l: c.l });
+    }
+    return [...out, { t, v: now, h: now, l: now }];
+  }, [candles, trades, range, now]);
+  const W = 400;
+  const H = 150;
+  const vs = pts.map((p) => p.v);
+  let lo = Math.min(...vs);
+  let hi = Math.max(...vs);
+  if (hi - lo < hi * 0.01) {
+    hi *= 1.005;
+    lo *= 0.995;
+  }
+  const t0 = pts[0]?.t ?? 0;
+  const t1 = pts[pts.length - 1]?.t ?? 1;
+  const x = (t: number) => 4 + ((t - t0) / Math.max(1, t1 - t0)) * (W - 8);
+  const y = (v: number) => 6 + (1 - (v - lo) / Math.max(1, hi - lo)) * (H - 12);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
+  const change = pts.length > 1 ? (pts[pts.length - 1].v - pts[0].v) / Math.max(1, pts[0].v) : 0;
+  return (
+    <div className="card stack tight">
+      <div className="row between">
+        <span className={`tnum small ${change >= 0 ? 'up' : 'down'}`}>{change >= 0 ? '▲' : '▼'} {(Math.abs(change) * 100).toFixed(1)}% over {range === '1h' ? 'the hour' : range === '24h' ? '24 hours' : '7 days'}</span>
+        <Tabs tabs={[['1h', '1 h'], ['24h', '24 h'], ['7d', '7 days']]} value={range} onChange={setRange} />
+      </div>
+      {pts.length < 2 ? (
+        <p className="small muted">No trades in this range yet.</p>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} className="price-chart" role="img" aria-label={`Price from ${unitPrice(pts[0].v)} to ${unitPrice(pts[pts.length - 1].v)}`}>
+          {[0.25, 0.5, 0.75].map((k) => <line key={k} x1="0" x2={W} y1={H * k} y2={H * k} className="grid" />)}
+          <path d={`${line}L${x(t1)},${H}L${x(t0)},${H}Z`} className={`area ${change >= 0 ? 'up' : 'down'}`} />
+          <path d={line} className={`line ${change >= 0 ? 'up' : 'down'}`} />
+          <text x={W - 4} y={12} textAnchor="end" className="lbl">{unitPrice(hi)}</text>
+          <text x={W - 4} y={H - 4} textAnchor="end" className="lbl">{unitPrice(lo)}</text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
+// The order book as depth bars: how much is waiting at each price.
+function DepthBook({ bids, asks, npc }: { bids: any[]; asks: any[]; npc: { bid: number; ask: number } }) {
+  const all = [...bids, ...asks];
+  const max = Math.max(1, ...all.map((r) => r.qty));
+  const row = (r: any, side: 'bid' | 'ask') => (
+    <div key={side + r.price} className={`depth-row ${side}`}>
+      <i style={{ width: `${(r.qty / max) * 100}%` }} />
+      <span className="tnum">{unitPrice(r.price)}</span>
+      <span className="tnum r">{num(r.qty)}</span>
+    </div>
+  );
+  return (
+    <div className="depth">
+      <div>
+        <div className="tiny muted">Buyers</div>
+        {bids.map((r) => row(r, 'bid'))}
+        <div className="depth-row bid npc"><span className="tnum">{unitPrice(npc.bid)}</span><span className="tiny muted r">market traders</span></div>
+      </div>
+      <div>
+        <div className="tiny muted">Sellers</div>
+        {asks.map((r) => row(r, 'ask'))}
+        <div className="depth-row ask npc"><span className="tnum">{unitPrice(npc.ask)}</span><span className="tiny muted r">market traders</span></div>
       </div>
     </div>
   );

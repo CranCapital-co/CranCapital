@@ -8,6 +8,8 @@ import { Window, Tabs, useApi, Loading, Money, Stat, Bars, Confirm, Field, Dolla
 import { refreshMe, flagList, demandAt } from '../common';
 import type { Business } from '../../lib/types';
 import { BizIcon, FitoutIcon, GoodIcon, Icon, MenuIcon } from '../Icon';
+import { ingredientNeeds, type StorageCity } from '../../lib/restock';
+import { sound } from '../../audio/sound';
 import { BUSINESS_ICON } from '../icons';
 
 type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'manage';
@@ -67,6 +69,7 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
         </div>
         {flagList(b.flags).map((f) => <div key={f} className="notice red small">{f}{f === 'Fit-out incomplete' && b.flags.missing ? `: needs ${b.flags.missing.join(', ')}` : ''}</div>)}
         <Tabs tabs={tabs} value={tab} onChange={setTab} />
+        {tab === 'overview' && <NextStep b={b} t={t} onTab={setTab} onDone={done} />}
         {tab === 'overview' && <Overview b={b} t={t} />}
         {tab === 'menu' && <MenuEditor b={b} onSaved={done} />}
         {tab === 'stock' && <StockTab b={b} />}
@@ -81,15 +84,88 @@ export default function BusinessWindow({ params, api }: { params: { id: number }
   );
 }
 
+// Hours this business has been trading today (local time), at least one.
+function hoursToday(b: Business) {
+  const h = Number(b.local_hour ?? 12);
+  const open = b.open_hour ?? 0;
+  return Math.max(1, Math.min(24, h - open + 1));
+}
+
+// When the first ingredient runs out at today's pace, or null if unknown.
+function useRunout(b: Business) {
+  const customer = !!catalog().business_types.find((x) => x.id === b.kind)?.menu_category && b.kind !== 'bank';
+  const { data: storage } = useApi(() => (customer ? rpc<StorageCity[]>('my_storage') : Promise.resolve([] as StorageCity[])), [b.id, customer]);
+  return useMemo(() => {
+    if (!customer || !storage) return null;
+    const perHour = b.sales_today / hoursToday(b) || Number(b.capacity) * 0.3;
+    if (!perHour) return null;
+    const needs = ingredientNeeds(b);
+    let worst: { g: string; hours: number } | null = null;
+    for (const [g, per] of Object.entries(needs)) {
+      const have = storage.find((s) => s.city_id === b.city_id)?.goods.find((x) => x.good === g)?.qty ?? 0;
+      const hours = have / (per * perHour);
+      if (!worst || hours < worst.hours) worst = { g, hours };
+    }
+    return worst;
+  }, [storage, b, customer]);
+}
+
+function runoutText(r: { g: string; hours: number } | null) {
+  if (!r) return '—';
+  if (r.hours <= 0.02) return `Out of ${goodName(r.g).toLowerCase()}`;
+  if (r.hours < 1) return `${goodName(r.g)} runs out in about ${Math.max(5, Math.round((r.hours * 60) / 5) * 5)} min`;
+  if (r.hours < 48) return `Stock for about ${Math.round(r.hours)} h`;
+  return 'Plenty in stock';
+}
+
+// The one thing that matters most right now: Reopen, Restock, Hire or Upgrade.
+function NextStep({ b, t, onTab, onDone }: { b: Business; t: any; onTab: (t: Tab) => void; onDone: () => void }) {
+  const me = useGame((s) => s.me)!;
+  const r = useRunout(b);
+  let step: { label: string; why: string; icon: string; fn: () => void; tone: string } | null = null;
+  if (b.status === 'closed')
+    step = { label: 'Reopen', why: 'It’s closed, so nobody can buy.', icon: 'refresh', tone: 'gold', fn: async () => { if (await act(() => rpc('set_business_open', { p_id: b.id, p_open: true }), 'Open again.')) { sound.play('success'); onDone(); } } };
+  else if (b.flags?.out_of_stock || (r && r.hours < 1))
+    step = { label: 'Restock', why: runoutText(r), icon: 'box', tone: 'gold', fn: () => onTab('stock') };
+  else if ((t.placement === 'room' && t.id !== 'bank' && b.staff < (t.staff_fixed ?? 1)) || b.flags?.staff_quit)
+    step = { label: 'Hire staff', why: 'Rooms need staff to serve customers.', icon: 'people', tone: '', fn: () => onTab('staff') };
+  else if (b.level < (t.max_level ?? 5) && b.upgrade_cost && me.cash >= b.upgrade_cost)
+    step = { label: `Upgrade to level ${b.level + 1}`, why: `You can afford it: ${money(b.upgrade_cost, { cents: false })}.`, icon: 'trendUp', tone: 'gold', fn: () => onTab('manage') };
+  if (!step) return null;
+  return (
+    <div className="next-step">
+      <Icon name={step.icon} size={26} accent="var(--gold)" />
+      <span className="grow small">{step.why}</span>
+      <button className={`btn small ${step.tone}`} onClick={step.fn}>{step.label}</button>
+    </div>
+  );
+}
+
 function Overview({ b, t }: { b: Business; t: any }) {
   const hist = [...(b.history ?? [])].reverse();
   const isProducer = !t.menu_category;
+  const r = useRunout(b);
+  const perHour = (b.revenue_today - b.costs_today) / hoursToday(b);
   return (
     <div className="stack">
+      <div className="stat-tiles">
+        <div className="stat">
+          <span className="stat-label">{isProducer ? 'Made today' : 'Sales today'}</span>
+          <b className="tnum">{num(isProducer ? b.produced_today : b.sales_today)}</b>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Profit per hour</span>
+          <b className={`tnum ${perHour >= 0 ? 'up' : 'down'}`}>{perHour >= 0 ? '▲' : '▼'} {money(Math.abs(perHour), { cents: false })}</b>
+        </div>
+        <div className="stat">
+          <span className="stat-label">{isProducer ? 'Income today' : 'Stock'}</span>
+          <b className={`tnum ${!isProducer && r && r.hours < 1 ? 'down' : ''}`} style={{ fontSize: isProducer ? undefined : 14, whiteSpace: 'normal' }}>{isProducer ? money(b.revenue_today, { cents: false }) : runoutText(r)}</b>
+        </div>
+      </div>
       <div className="grid3">
-        <Stat label={isProducer ? 'Made today' : 'Sales today'} value={num(isProducer ? b.produced_today : b.sales_today)} />
         <Stat label="Income today" value={<Money v={b.revenue_today} />} />
         <Stat label="Costs today" value={<Money v={b.costs_today} />} />
+        <Stat label="Level" value={b.level} sub={`of ${t.max_level ?? 5}`} />
       </div>
       {t.menu_category && t.id !== 'bank' && (
         <div className="grid3">
@@ -135,6 +211,11 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
         if (!mi) return null;
         const d = demandAt(it.price, mi.fair_price);
         const ratio = it.price / mi.fair_price;
+        // Expected customers an hour for this item at this price: today's pace
+        // scaled by how interest changes from the saved price.
+        const saved = (b.settings?.menu ?? []).find((x: any) => x.id === it.id)?.price ?? mi.fair_price;
+        const pace = b.sales_today / Math.max(1, Number(b.local_hour ?? 12) - (b.open_hour ?? 0) + 1) / Math.max(1, menu.length) || (Number(b.capacity) * 0.4) / Math.max(1, menu.length);
+        const perHour = Math.round((pace * d) / Math.max(0.05, demandAt(saved, mi.fair_price)));
         return (
           <div key={it.id} className="menu-row">
             <MenuIcon id={mi.id} size={26} />
@@ -154,7 +235,7 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
               />
               <div className="demand" title="Customer interest"><i style={{ left: `${Math.min(98, Math.max(0, ((ratio - 0.4) / 1.6) * 100))}%` }} /></div>
               <div className="tiny muted">
-                {Object.entries(mi.ingredients).map(([g, q]) => `${q} ${goodName(g).toLowerCase()}`).join(', ')} · interest {(d * 100).toFixed(0)}%
+                {Object.entries(mi.ingredients).map(([g, q]) => `${q} ${goodName(g).toLowerCase()}`).join(', ')} · interest {(d * 100).toFixed(0)}% · <b className="tnum">≈ {num(perHour)} customers an hour</b>
               </div>
             </div>
             <div className="stack tight" style={{ alignItems: 'flex-end' }}>

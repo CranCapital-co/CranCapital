@@ -45,8 +45,10 @@ export const useIncome = create<Income>((set, get) => ({
   setServer: (v) => set({ server: v }),
 }));
 
-// Mills per hour, or null if we can't tell yet.
+// Mills per hour, or null if we can't tell yet. The server's figure (all
+// sales in the last hour, including ones made while away) wins when known.
 export function incomePerHour(s: Income = useIncome.getState()): number | null {
+  if (s.server != null) return s.server;
   const now = Date.now();
   const recent = s.sales.filter((x) => now - x.t < HOUR);
   const watched = Math.min(HOUR, now - s.since);

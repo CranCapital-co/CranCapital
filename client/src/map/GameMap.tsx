@@ -40,6 +40,9 @@ export interface MapApi {
   setPadding: (inset: { right: number; bottom: number }) => void;
   // Lift the camera to show everything you own in this city.
   empireView: () => void;
+  // A big moment: cheer, then circle the camera around your empire.
+  celebrate: () => void;
+  emote: (anim: 'wave' | 'cheer') => void;
 }
 
 interface Props {
@@ -574,6 +577,31 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         setHeatmap: (on) => map.setLayoutProperty('traffic', 'visibility', on ? 'visible' : 'none'),
         setPadding: (inset) =>
           map.easeTo({ padding: { top: 0, left: 0, right: inset.right, bottom: inset.bottom }, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 450 }),
+        emote: (anim) => world?.emote(anim),
+        celebrate: async () => {
+          world?.emote('cheer');
+          const mine = await rpc<any[]>('my_businesses').catch(() => []);
+          const pts = [...mine.filter((b) => b.city_id === m.id).map((b) => [b.lng, b.lat] as [number, number]), [pos.lng, pos.lat] as [number, number]];
+          const b = new maplibregl.LngLatBounds(pts[0], pts[0]);
+          pts.forEach((p) => b.extend(p));
+          map.fitBounds(b, { padding: 140, maxZoom: 17.5, pitch: 50, duration: 1400 });
+          let stop = false;
+          const halt = () => (stop = true);
+          map.once('mousedown', halt);
+          map.once('touchstart', halt);
+          map.once('wheel', halt);
+          setTimeout(() => {
+            const b0 = map.getBearing();
+            const t0 = performance.now();
+            const spin = (t: number) => {
+              const k = (t - t0) / 8000;
+              if (stop || k >= 1 || destroyed) return;
+              map.rotateTo(b0 + 360 * (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2), { duration: 0 });
+              requestAnimationFrame(spin);
+            };
+            requestAnimationFrame(spin);
+          }, 1500);
+        },
         empireView: async () => {
           const mine = await rpc<any[]>('my_businesses').catch(() => []);
           const here = mine.filter((b) => b.city_id === m.id);

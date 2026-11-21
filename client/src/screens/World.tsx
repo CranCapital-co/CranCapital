@@ -11,6 +11,7 @@ import { HudMoney, CityStrip, HudRight } from '../ui/hud/Hud';
 import { Dock } from '../ui/hud/Dock';
 import { MapTools } from '../ui/hud/MapTools';
 import { Icon } from '../ui/Icon';
+import { Moments } from '../ui/Moments';
 import { trafficLabel } from '../ui/common';
 import type { Me } from '../lib/types';
 
@@ -285,6 +286,7 @@ export default function World() {
       )}
 
       {away && <AwayCard away={away} onClose={() => set({ away: null })} />}
+      <Moments api={api} />
     </div>
   );
 }

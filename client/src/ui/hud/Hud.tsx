@@ -50,8 +50,27 @@ export function HudMoney() {
   useIncome((s) => s.sales.length); // re-render on new sales
   const [, tick] = useState(0);
   useEffect(() => {
-    const i = setInterval(() => tick((x) => x + 1), 30_000);
-    return () => clearInterval(i);
+    const load = () =>
+      rpc<{ per_hour: number }>('my_income')
+        .then((r) => useIncome.getState().setServer(Number(r.per_hour)))
+        .catch(() => {});
+    load();
+    const i = setInterval(() => {
+      tick((x) => x + 1);
+      load();
+    }, 60_000);
+    // Catch up soon after a sale lands.
+    let t: any = 0;
+    const onSale = () => {
+      clearTimeout(t);
+      t = setTimeout(load, 4000);
+    };
+    window.addEventListener('cc:sales', onSale);
+    return () => {
+      clearInterval(i);
+      clearTimeout(t);
+      window.removeEventListener('cc:sales', onSale);
+    };
   }, []);
   const rate = incomePerHour();
   const next = me.next_tier;
