@@ -23,6 +23,8 @@ CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permissi
 | Live updates | Supabase Realtime | Other players walking (presence), notifications, chat. |
 | City data | `tools/citydata/` → `supabase/seed/cities/`, `client/public/cities/` | Buildings, foot traffic, buildable plots and port sites, built from OpenStreetMap via OpenFreeMap tiles. |
 | Map tiles | OpenFreeMap (free, no key) | Real streets and 3D buildings. |
+| 3D world | `client/src/world3d/` (Three.js inside MapLibre) | People, businesses, vehicles, weather and the living city, all built in code. |
+| Weather | Open-Meteo, fetched by the server every 30 minutes | Rain, snow and cloud on the map. |
 
 Rules the server keeps: the client only asks; every change to a player's cash
 goes through `game.money()` and lands in `game.ledger`; players can't reach
@@ -72,6 +74,14 @@ Run the tests (needs the local stack running):
 
 ```bash
 npm run test:db
+```
+
+The browser test opens Tutorial Island and fails on any console error or if
+the 3D layer doesn't draw (needs `npm run dev` running and Playwright's
+Chromium):
+
+```bash
+npm run test:e2e
 ```
 
 ## Deploy
