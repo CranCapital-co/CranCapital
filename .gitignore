@@ -9,3 +9,4 @@ tools/citydata/.cache/
 tests/e2e/screens/
 test-results/
 playwright-report/
+tools/world/.cache/
