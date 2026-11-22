@@ -1,17 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+
+const MiniView = lazy(() => import('../../world3d/MiniView'));
 import { rpc } from '../../lib/supabase';
 import { useGame, act, catalog, goodName, goodIcon, cityName } from '../../lib/store';
 import { money, unitPrice, hourLabel, num, ago } from '../../lib/format';
 import { Window, Tabs, useApi, Loading, Money, Stat, Bars, Confirm, Field, DollarInput, Progress } from '../components';
 import { refreshMe, flagList, demandAt } from '../common';
 import type { Business } from '../../lib/types';
+import { BizIcon, FitoutIcon, GoodIcon, Icon, MenuIcon } from '../Icon';
+import { ingredientNeeds, type StorageCity } from '../../lib/restock';
+import { sound } from '../../audio/sound';
+import { BUSINESS_ICON } from '../icons';
 
-type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'manage';
+type Tab = 'overview' | 'menu' | 'stock' | 'fitout' | 'staff' | 'production' | 'shipping' | 'bank' | 'decorate' | 'manage';
 
-export default function BusinessWindow({ params }: { params: { id: number } }) {
+export default function BusinessWindow({ params, api }: { params: { id: number }; api?: any }) {
   const me = useGame((s) => s.me)!;
   const { data: b, loading, reload } = useApi(() => rpc<Business & { mine?: boolean }>('business_detail', { p_id: params.id }), [params.id], 20000);
   const [tab, setTab] = useState<Tab>('overview');
+  // Fly the camera to the business and keep it framed beside the sheet.
+  const [flown, setFlown] = useState(false);
+  useEffect(() => {
+    if (!b || flown || !api || b.city_id !== me.city_id) return;
+    setFlown(true);
+    setTimeout(() => api.flyTo(b.lat, b.lng, 17.2), 120);
+  }, [b, flown, api, me.city_id]);
   if (loading && !b) return <Window title="Business"><Loading /></Window>;
   if (!b) return <Window title="Business">Not found.</Window>;
   const t = catalog().business_types.find((x) => x.id === b.kind)!;
@@ -26,6 +39,7 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
   if (!customer && t.id !== 'port' && t.id !== 'bank') tabs.push(['production', 'Production']);
   if (t.id === 'port') tabs.push(['shipping', 'Shipping']);
   if (t.id === 'bank') tabs.push(['bank', 'Bank']);
+  if (b.status !== 'abandoned') tabs.push(['decorate', 'Decorate']);
   tabs.push(['manage', 'Manage']);
 
   const done = async () => {
@@ -34,8 +48,11 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
   };
 
   return (
-    <Window title={b.name} icon={b.icon}>
+    <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
+        <Suspense fallback={<div className="mini-view" />}>
+          <MiniView kind={b.kind} tier={catalog().business_types.find((x) => x.id === b.kind)?.tier ?? 1} level={b.level} status={b.status} fitout={b.fitout} />
+        </Suspense>
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{t.name}</span>
           <span className="chip">Level {b.level}</span>
@@ -53,6 +70,8 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
         </div>
         {flagList(b.flags).map((f) => <div key={f} className="notice red small">{f}{f === 'Fit-out incomplete' && b.flags.missing ? `: needs ${b.flags.missing.join(', ')}` : ''}</div>)}
         <Tabs tabs={tabs} value={tab} onChange={setTab} />
+        {tab === 'overview' && <NextStep b={b} t={t} onTab={setTab} onDone={done} />}
+        {tab === 'overview' && b.kind === 'cart' && <Rivals b={b} />}
         {tab === 'overview' && <Overview b={b} t={t} />}
         {tab === 'menu' && <MenuEditor b={b} onSaved={done} />}
         {tab === 'stock' && <StockTab b={b} />}
@@ -61,21 +80,95 @@ export default function BusinessWindow({ params }: { params: { id: number } }) {
         {tab === 'production' && <ProductionTab b={b} t={t} onSaved={done} />}
         {tab === 'shipping' && <ShippingTab b={b} />}
         {tab === 'bank' && <BankTab b={b} />}
+        {tab === 'decorate' && <DecorateTab b={b} />}
         {tab === 'manage' && <ManageTab b={b} t={t} onSaved={done} />}
       </div>
     </Window>
   );
 }
 
+// Hours this business has been trading today (local time), at least one.
+function hoursToday(b: Business) {
+  const h = Number(b.local_hour ?? 12);
+  const open = b.open_hour ?? 0;
+  return Math.max(1, Math.min(24, h - open + 1));
+}
+
+// When the first ingredient runs out at today's pace, or null if unknown.
+function useRunout(b: Business) {
+  const customer = !!catalog().business_types.find((x) => x.id === b.kind)?.menu_category && b.kind !== 'bank';
+  const { data: storage } = useApi(() => (customer ? rpc<StorageCity[]>('my_storage') : Promise.resolve([] as StorageCity[])), [b.id, customer]);
+  return useMemo(() => {
+    if (!customer || !storage) return null;
+    const perHour = b.sales_today / hoursToday(b) || Number(b.capacity) * 0.3;
+    if (!perHour) return null;
+    const needs = ingredientNeeds(b);
+    let worst: { g: string; hours: number } | null = null;
+    for (const [g, per] of Object.entries(needs)) {
+      const have = storage.find((s) => s.city_id === b.city_id)?.goods.find((x) => x.good === g)?.qty ?? 0;
+      const hours = have / (per * perHour);
+      if (!worst || hours < worst.hours) worst = { g, hours };
+    }
+    return worst;
+  }, [storage, b, customer]);
+}
+
+function runoutText(r: { g: string; hours: number } | null) {
+  if (!r) return '—';
+  if (r.hours <= 0.02) return `Out of ${goodName(r.g).toLowerCase()}`;
+  if (r.hours < 1) return `${goodName(r.g)} runs out in about ${Math.max(5, Math.round((r.hours * 60) / 5) * 5)} min`;
+  if (r.hours < 48) return `Stock for about ${Math.round(r.hours)} h`;
+  return 'Plenty in stock';
+}
+
+// The one thing that matters most right now: Reopen, Restock, Hire or Upgrade.
+function NextStep({ b, t, onTab, onDone }: { b: Business; t: any; onTab: (t: Tab) => void; onDone: () => void }) {
+  const me = useGame((s) => s.me)!;
+  const r = useRunout(b);
+  let step: { label: string; why: string; icon: string; fn: () => void; tone: string } | null = null;
+  if (b.status === 'closed')
+    step = { label: 'Reopen', why: 'It’s closed, so nobody can buy.', icon: 'refresh', tone: 'gold', fn: async () => { if (await act(() => rpc('set_business_open', { p_id: b.id, p_open: true }), 'Open again.')) { sound.play('success'); onDone(); } } };
+  else if (b.flags?.out_of_stock || (r && r.hours < 1))
+    step = { label: 'Restock', why: runoutText(r), icon: 'box', tone: 'gold', fn: () => onTab('stock') };
+  else if ((t.placement === 'room' && t.id !== 'bank' && b.staff < (t.staff_fixed ?? 1)) || b.flags?.staff_quit)
+    step = { label: 'Hire staff', why: 'Rooms need staff to serve customers.', icon: 'people', tone: '', fn: () => onTab('staff') };
+  else if (b.level < (t.max_level ?? 5) && b.upgrade_cost && me.cash >= b.upgrade_cost)
+    step = { label: `Upgrade to level ${b.level + 1}`, why: `You can afford it: ${money(b.upgrade_cost, { cents: false })}.`, icon: 'trendUp', tone: 'gold', fn: () => onTab('manage') };
+  if (!step) return null;
+  return (
+    <div className="next-step">
+      <Icon name={step.icon} size={26} accent="var(--gold)" />
+      <span className="grow small">{step.why}</span>
+      <button className={`btn small ${step.tone}`} onClick={step.fn}>{step.label}</button>
+    </div>
+  );
+}
+
 function Overview({ b, t }: { b: Business; t: any }) {
   const hist = [...(b.history ?? [])].reverse();
   const isProducer = !t.menu_category;
+  const r = useRunout(b);
+  const perHour = (b.revenue_today - b.costs_today) / hoursToday(b);
   return (
     <div className="stack">
+      <div className="stat-tiles">
+        <div className="stat">
+          <span className="stat-label">{isProducer ? 'Made today' : 'Sales today'}</span>
+          <b className="tnum">{num(isProducer ? b.produced_today : b.sales_today)}</b>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Profit per hour</span>
+          <b className={`tnum ${perHour >= 0 ? 'up' : 'down'}`}>{perHour >= 0 ? '▲' : '▼'} {money(Math.abs(perHour), { cents: false })}</b>
+        </div>
+        <div className="stat">
+          <span className="stat-label">{isProducer ? 'Income today' : 'Stock'}</span>
+          <b className={`tnum ${!isProducer && r && r.hours < 1 ? 'down' : ''}`} style={{ fontSize: isProducer ? undefined : 14, whiteSpace: 'normal' }}>{isProducer ? money(b.revenue_today, { cents: false }) : runoutText(r)}</b>
+        </div>
+      </div>
       <div className="grid3">
-        <Stat label={isProducer ? 'Made today' : 'Sales today'} value={num(isProducer ? b.produced_today : b.sales_today)} />
         <Stat label="Income today" value={<Money v={b.revenue_today} />} />
         <Stat label="Costs today" value={<Money v={b.costs_today} />} />
+        <Stat label="Level" value={b.level} sub={`of ${t.max_level ?? 5}`} />
       </div>
       {t.menu_category && t.id !== 'bank' && (
         <div className="grid3">
@@ -121,9 +214,14 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
         if (!mi) return null;
         const d = demandAt(it.price, mi.fair_price);
         const ratio = it.price / mi.fair_price;
+        // Expected customers an hour for this item at this price: today's pace
+        // scaled by how interest changes from the saved price.
+        const saved = (b.settings?.menu ?? []).find((x: any) => x.id === it.id)?.price ?? mi.fair_price;
+        const pace = b.sales_today / Math.max(1, Number(b.local_hour ?? 12) - (b.open_hour ?? 0) + 1) / Math.max(1, menu.length) || (Number(b.capacity) * 0.4) / Math.max(1, menu.length);
+        const perHour = Math.round((pace * d) / Math.max(0.05, demandAt(saved, mi.fair_price)));
         return (
           <div key={it.id} className="menu-row">
-            <span style={{ fontSize: 22 }}>{mi.icon}</span>
+            <MenuIcon id={mi.id} size={26} />
             <div className="stack tight">
               <div className="row between">
                 <strong>{mi.name}</strong>
@@ -140,7 +238,7 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
               />
               <div className="demand" title="Customer interest"><i style={{ left: `${Math.min(98, Math.max(0, ((ratio - 0.4) / 1.6) * 100))}%` }} /></div>
               <div className="tiny muted">
-                {Object.entries(mi.ingredients).map(([g, q]) => `${q} ${goodName(g).toLowerCase()}`).join(', ')} · interest {(d * 100).toFixed(0)}%
+                {Object.entries(mi.ingredients).map(([g, q]) => `${q} ${goodName(g).toLowerCase()}`).join(', ')} · interest {(d * 100).toFixed(0)}% · <b className="tnum">≈ {num(perHour)} customers an hour</b>
               </div>
             </div>
             <div className="stack tight" style={{ alignItems: 'flex-end' }}>
@@ -161,7 +259,7 @@ function MenuEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
         >
           <option value="">+ Add an item…</option>
           {options.filter((o) => !menu.some((m) => m.id === o.id)).map((o) => (
-            <option key={o.id} value={o.id}>{o.icon} {o.name} (fair {money(o.fair_price)})</option>
+            <option key={o.id} value={o.id}>{o.name} (fair {money(o.fair_price)})</option>
           ))}
         </select>
       )}
@@ -201,7 +299,7 @@ function StockTab({ b }: { b: Business }) {
         <tbody>
           {goods.map((g) => (
             <tr key={g}>
-              <td>{goodIcon(g)} {goodName(g)}</td>
+              <td className="nowrap"><GoodIcon id={g} size={20} /> {goodName(g)}</td>
               <td className={`r num ${have(g) < needs[g] * 20 ? 'bad' : ''}`}>{num(have(g))}</td>
               <td className="r num">{needs[g]}</td>
               <td className="r num">{unitPrice(ask(g))}</td>
@@ -228,7 +326,10 @@ function StockTab({ b }: { b: Business }) {
               if (!r) break;
               spent += r.value;
             }
-            if (spent) useGame.getState().toast(`Restocked for ${money(spent)} from the exchange.`, 'success');
+            if (spent) {
+              useGame.getState().toast(`Restocked for ${money(spent)} from the exchange.`, 'success');
+              window.dispatchEvent(new CustomEvent('cc:delivery', { detail: { ids: [b.id] } }));
+            }
             await reload();
             await refreshMe();
           }}
@@ -268,10 +369,10 @@ function FitoutEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
     <div className="stack">
       <p className="small muted">Pick an item, then tap tiles to place it. Tap a filled tile with the eraser to remove it (you get half the price back).</p>
       <div className="palette">
-        <button className={brush === null ? 'on' : ''} onClick={() => setBrush(null)}>🧽 Eraser</button>
+        <button className={brush === null ? 'on' : ''} onClick={() => setBrush(null)}><Icon name="eraser" size={18} /> Eraser</button>
         {items.map((f) => (
           <button key={f.id} className={brush === f.id ? 'on' : ''} onClick={() => setBrush(f.id)} title={`${f.name}: ${money(f.cost)}`}>
-            <span style={{ fontSize: 18 }}>{f.icon}</span>
+            <FitoutIcon id={f.id} />
             <span>
               {f.name}
               <br />
@@ -288,7 +389,7 @@ function FitoutEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
             onClick={() => setGrid(grid.map((y, j) => (j === i ? (brush && y === brush ? null : brush) : y)))}
             aria-label={x ? cat.fitout_items.find((f) => f.id === x)?.name : 'Empty tile'}
           >
-            {x ? cat.fitout_items.find((f) => f.id === x)?.icon : ''}
+            {x ? <FitoutIcon id={x} size={18} /> : ''}
           </button>
         ))}
       </div>
@@ -377,7 +478,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
               const good = cat.goods.find((x) => x.id === g)!;
               return (
                 <option key={g} value={g} disabled={good.warm_only && city?.climate !== 'warm'}>
-                  {good.icon} {good.name}: {num(cat.crops[g] * mult)} an hour (≈ {money(cat.crops[g] * mult * good.base_price)}/h)
+                  <GoodIcon id={g} size={18} /> {good.name}: {num(cat.crops[g] * mult)} an hour (≈ {money(cat.crops[g] * mult * good.base_price)}/h)
                 </option>
               );
             })}
@@ -402,7 +503,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
         <div className="card stack">
           <strong>{recipe.name}</strong>
           <div className="small">
-            {Object.entries(recipe.inputs).map(([g, q]) => `${q} ${goodIcon(g)} ${goodName(g)}`).join(' + ')} → {Object.entries(recipe.outputs).map(([g, q]) => `${q} ${goodIcon(g)} ${goodName(g)}`).join(' + ')}
+            {Object.entries(recipe.inputs).map(([g, q]) => `${q} ${goodName(g)}`).join(' + ')} → {Object.entries(recipe.outputs).map(([g, q]) => `${q} ${goodName(g)}`).join(' + ')}
           </div>
           <div className="small muted">Up to {num(recipe.cycles_per_hour * mult)} batches an hour{recipe.diesel_per_hour ? `, burning ${recipe.diesel_per_hour * b.level} diesel an hour` : ''}.</div>
           <table className="list">
@@ -410,7 +511,7 @@ function ProductionTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => 
             <tbody>
               {[...Object.entries(recipe.inputs), ...(recipe.diesel_per_hour ? [['diesel', 0] as [string, number]] : [])].map(([g, q]) => (
                 <tr key={g}>
-                  <td>{goodIcon(g)} {goodName(g)}</td>
+                  <td className="nowrap"><GoodIcon id={g} size={20} /> {goodName(g)}</td>
                   <td className="r num">{num(have(g))}</td>
                   <td className="r num">{num(g === 'diesel' ? recipe.diesel_per_hour * b.level : (q as number) * recipe.cycles_per_hour * mult)}</td>
                 </tr>
@@ -465,7 +566,7 @@ function ShippingTab({ b }: { b: Business }) {
         <Field label="Goods">
           <select className="input" value={good} onChange={(e) => setGood(e.target.value)}>
             {goods.length === 0 && <option value="">Nothing in storage</option>}
-            {goods.map((x: any) => <option key={x.good} value={x.good}>{goodIcon(x.good)} {goodName(x.good)} ({num(x.qty)})</option>)}
+            {goods.map((x: any) => <option key={x.good} value={x.good}>{goodName(x.good)} ({num(x.qty)})</option>)}
           </select>
         </Field>
         <Field label="Quantity">
@@ -490,7 +591,7 @@ function ShippingTab({ b }: { b: Business }) {
       )}
       <button className="btn" disabled={!good || qty <= 0} onClick={async () => {
         const r = await act(() => rpc<any>('ship', { p_port: b.id, p_good: good, p_qty: qty, p_to: to, p_kind: kind }), (x) => `Ship sailed: arrives in ${x.arrive_minutes} minutes. Freight ${money(x.freight)}.`);
-        if (r) { reload(); refreshMe(); }
+        if (r) { window.dispatchEvent(new CustomEvent('cc:ship', { detail: { id: b.id } })); reload(); refreshMe(); }
       }}>
         Ship it
       </button>
@@ -499,7 +600,7 @@ function ShippingTab({ b }: { b: Business }) {
         <tbody>
           {(prop?.shipments ?? []).filter((s: any) => s.port_id === b.id).slice(0, 12).map((s: any) => (
             <tr key={s.id}>
-              <td>{goodIcon(s.good_id)} {num(s.qty)} → {cityName(s.to_city)}</td>
+              <td><GoodIcon id={s.good_id} size={18} /> {num(s.qty)} → {cityName(s.to_city)}</td>
               <td>{s.kind}</td>
               <td className="r">{s.status === 'delivered' ? (s.delivered_value ? money(s.delivered_value) : 'arrived') : `due ${new Date(s.arrive_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</td>
             </tr>
@@ -579,7 +680,7 @@ function ManageTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => void
             {t.placement === 'room' && 'Serve 10% more customers, look more appealing, and add a menu slot.'}
             {t.placement !== 'street' && t.placement !== 'room' && 'Produce 80% more of the base rate (more crew and running costs too).'}
           </p>
-          <button className="btn gold" onClick={async () => { if (await act(() => rpc('upgrade_business', { p_id: b.id }), `Upgraded to level ${b.level + 1}!`)) onSaved(); }}>
+          <button className="btn gold" onClick={async () => { if (await act(() => rpc('upgrade_business', { p_id: b.id }), `Upgraded to level ${b.level + 1}!`)) { window.dispatchEvent(new CustomEvent('cc:levelup', { detail: { id: b.id, level: b.level + 1 } })); onSaved(); } }}>
             Upgrade for {money(b.upgrade_cost)}
           </button>
         </div>
@@ -614,8 +715,11 @@ function ShopFront({ b }: { b: Business }) {
   const cat = catalog();
   const [reported, setReported] = useState(false);
   return (
-    <Window title={b.name} icon={b.icon}>
+    <Window title={b.name} icon={BUSINESS_ICON[b.kind] ?? 'shop'}>
       <div className="stack">
+        <Suspense fallback={<div className="mini-view" />}>
+          <MiniView kind={b.kind} tier={catalog().business_types.find((x) => x.id === b.kind)?.tier ?? 1} level={b.level} status={b.status} fitout={b.fitout} />
+        </Suspense>
         <div className="row wrap" style={{ gap: 6 }}>
           <span className="chip">{b.type_name}</span>
           <span className="chip">Level {b.level}</span>
@@ -633,7 +737,7 @@ function ShopFront({ b }: { b: Business }) {
                   const mi = cat.menu_items.find((x) => x.id === m.id);
                   return (
                     <tr key={m.id}>
-                      <td>{mi?.icon} {mi?.name}</td>
+                      <td className="nowrap">{mi && <MenuIcon id={mi.id} size={18} />} {mi?.name}</td>
                       <td className="r">{money(m.price)}</td>
                       <td className="r tiny muted">fair {mi && money(mi.fair_price)}</td>
                     </tr>
@@ -655,5 +759,100 @@ function ShopFront({ b }: { b: Business }) {
         </button>
       </div>
     </Window>
+  );
+}
+
+// Street rivals: other players' carts nearby selling the same dishes, with a
+// friendly price comparison (menus are public on every shop front).
+function Rivals({ b }: { b: Business }) {
+  const cat = catalog();
+  const { data } = useApi(async () => {
+    const d = 0.0008;
+    const near = (await rpc<any[]>('map_businesses', { p_city: b.city_id, p_w: b.lng - d * 1.6, p_s: b.lat - d, p_e: b.lng + d * 1.6, p_n: b.lat + d }))
+      .filter((x) => x.kind === 'cart' && !x.mine && x.status === 'open')
+      .slice(0, 4);
+    const mineMenu: { id: string; price: number }[] = b.settings?.menu ?? [];
+    const out: { name: string; owner: string; item: string; theirs: number; ours: number }[] = [];
+    for (const o of near) {
+      const det = await rpc<any>('business_detail', { p_id: o.id }).catch(() => null);
+      for (const m of (det?.menu ?? []) as { id: string; price: number }[]) {
+        const ours = mineMenu.find((x) => x.id === m.id);
+        if (ours) out.push({ name: o.name, owner: o.owner_name, item: m.id, theirs: m.price, ours: ours.price });
+      }
+    }
+    return out;
+  }, [b.id]);
+  if (!data?.length) return null;
+  return (
+    <div className="card stack tight rivals">
+      <strong className="row"><Icon name="flag" accent="#c9302c" /> Street rivals nearby</strong>
+      {data.slice(0, 4).map((r, i) => {
+        const name = cat.menu_items.find((m) => m.id === r.item)?.name ?? r.item;
+        const diff = r.theirs - r.ours;
+        return (
+          <div key={i} className="small row between">
+            <span>
+              <b>{r.name}</b> <span className="muted">({r.owner})</span> sells {name} for {money(r.theirs)}
+            </span>
+            <span className={`tnum ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'muted'}`}>{diff === 0 ? 'same as you' : diff > 0 ? `▲ you're ${money(diff)} cheaper` : `▼ you're ${money(-diff)} dearer`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Decorations: looks only, bought with loyalty points.
+function DecorateTab({ b }: { b: Business }) {
+  const me = useGame((s) => s.me)!;
+  const { data: items } = useApi(() => rpc<any[]>('decor_catalog'), []);
+  const { data: onMap, reload } = useApi(async () => {
+    const d = 0.0005;
+    const list = await rpc<any[]>('map_businesses', { p_city: b.city_id, p_w: b.lng - d, p_s: b.lat - d, p_e: b.lng + d, p_n: b.lat + d });
+    return (list.find((x) => x.id === b.id)?.decor ?? []) as string[];
+  }, [b.id]);
+  const owned = new Set(onMap ?? []);
+  if (!items) return <Loading />;
+  return (
+    <div className="stack">
+      <p className="small muted">Decorations change how it looks on the map, never how much it sells. You have <b>{me.loyalty_points}</b> loyalty points (earn them from daily goals, city projects and days played).</p>
+      <div className="decor-grid">
+        {items.map((it) => (
+          <div key={it.id} className={`decor-item ${owned.has(it.id) ? 'owned' : ''}`}>
+            <Icon name={it.kind === 'flowers' ? 'plant' : it.kind === 'lights' ? 'lamp' : it.kind === 'sign' ? 'sparkle' : 'shop'} size={30} accent="var(--gold)" />
+            <b className="small">{it.name}</b>
+            {owned.has(it.id) ? (
+              <button
+                className="btn tiny ghost"
+                onClick={async () => {
+                  if (await act(() => rpc('remove_decor', { p_business: b.id, p_item: it.id }), 'Taken down.')) {
+                    reload();
+                    useGame.getState().bump();
+                  }
+                }}
+              >
+                Take down
+              </button>
+            ) : (
+              <button
+                className="btn tiny gold"
+                disabled={me.loyalty_points < it.cost_points}
+                onClick={async () => {
+                  const r = await act(() => rpc<any>('buy_decor', { p_business: b.id, p_item: it.id }), `${it.name} added!`);
+                  if (r) {
+                    sound.play('badge');
+                    useGame.setState({ me: { ...me, loyalty_points: r.points_left } });
+                    reload();
+                    useGame.getState().bump();
+                  }
+                }}
+              >
+                {it.cost_points} pts
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

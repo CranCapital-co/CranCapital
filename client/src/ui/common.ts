@@ -37,3 +37,10 @@ export function demandAt(price: number, fair: number) {
   const r = price / fair;
   return r <= 1 ? Math.min(1.4, 1 + 0.5 * (1 - r)) : Math.exp(-2.2 * (r - 1));
 }
+
+// Foot traffic in words: what the number means for a cart.
+export function trafficLabel(v: number): { label: 'Quiet' | 'Busy' | 'Packed'; stars: number } {
+  if (v >= 1.8) return { label: 'Packed', stars: 3 };
+  if (v >= 1.0) return { label: 'Busy', stars: 2 };
+  return { label: 'Quiet', stars: 1 };
+}

@@ -20,6 +20,14 @@ Map tiles are served by [OpenFreeMap](https://openfreemap.org).
 
 The tiles are built with the OpenMapTiles schema. © [OpenMapTiles](https://openmaptiles.org).
 
+## Weather
+
+Live weather for each city comes from [Open-Meteo](https://open-meteo.com/), free for non-commercial use. Weather data by Open-Meteo.com, licensed under CC BY 4.0.
+
+## Sun position
+
+The sun's position is worked out with SunCalc by Vladimir Agafonkin (BSD-2-Clause).
+
 ## City data made for the game
 
 The game uses its own city data: a building list, a foot-traffic grid and a plot grid for each city.
@@ -31,6 +39,8 @@ This data is derived from OpenStreetMap. It is available under the ODbL in the g
 | Software | Licence |
 | --- | --- |
 | MapLibre GL JS | BSD-3-Clause |
+| Three.js | MIT |
+| SunCalc | BSD-2-Clause |
 | React and React DOM | MIT |
 | Supabase JavaScript client | MIT |
 | Zustand | MIT |

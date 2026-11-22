@@ -4,21 +4,25 @@ import { useGame, act, catalog } from '../../lib/store';
 import { date, money, num, ringFor } from '../../lib/format';
 import { Window, Tabs, useApi, Loading, Stat, Avatar, Field, Confirm } from '../components';
 import { refreshMe } from '../common';
+import { Icon } from '../Icon';
+import { useSettings, type Graphics } from '../../lib/settings';
+import { sound } from '../../audio/sound';
 
-type Tab = 'overview' | 'profile' | 'referrals' | 'notifications' | 'privacy' | 'security' | 'danger';
+type Tab = 'overview' | 'profile' | 'settings' | 'referrals' | 'notifications' | 'privacy' | 'security' | 'danger';
 
 export default function AccountWindow() {
   const [tab, setTab] = useState<Tab>('overview');
   return (
-    <Window title="Account" icon="👤">
+    <Window title="Account" icon="account">
       <div className="stack">
         <Tabs
-          tabs={[['overview', 'Overview'], ['profile', 'Profile'], ['referrals', 'Referrals'], ['notifications', 'Notifications'], ['privacy', 'Privacy & data'], ['security', 'Security'], ['danger', 'Danger zone']]}
+          tabs={[['overview', 'Overview'], ['profile', 'Profile'], ['settings', 'Sound & graphics'], ['referrals', 'Referrals'], ['notifications', 'Notifications'], ['privacy', 'Privacy & data'], ['security', 'Security'], ['danger', 'Danger zone']]}
           value={tab}
           onChange={setTab}
         />
         {tab === 'overview' && <Overview />}
         {tab === 'profile' && <Profile />}
+        {tab === 'settings' && <SoundGraphics />}
         {tab === 'referrals' && <Referrals />}
         {tab === 'notifications' && <Notifications />}
         {tab === 'privacy' && <Privacy />}
@@ -53,7 +57,7 @@ function Overview() {
       <div className="badge-grid">
         {cat.badges.filter((b) => !b.id.startsWith('trophy_') || earned.has(b.id)).map((b) => (
           <div key={b.id} className={`badge-tile ${earned.has(b.id) ? '' : 'locked'}`} title={b.description}>
-            <div className="ico">{b.icon}</div>
+            <div className="ico"><Icon name="medal" size={28} accent={earned.has(b.id) ? 'var(--gold)' : 'var(--line-2)'} /></div>
             <div>{b.name}</div>
           </div>
         ))}
@@ -155,7 +159,7 @@ function Referrals() {
       {data.trophies.length > 0 && (
         <div className="card">
           <strong>Trophies</strong>
-          {data.trophies.map((t: any, i: number) => <div key={i} className="small">{catalog().badges.find((b) => b.id === t.badge)?.icon} {catalog().badges.find((b) => b.id === t.badge)?.name} · {t.month}</div>)}
+          {data.trophies.map((t: any, i: number) => <div key={i} className="small"><Icon name="trophy" size={16} /> {catalog().badges.find((b) => b.id === t.badge)?.name} · {t.month}</div>)}
         </div>
       )}
     </div>
@@ -177,6 +181,66 @@ function Toggle({ k, label, hint }: { k: string; label: string; hint: string }) 
       />
       <span><b>{label}</b><br /><span className="small muted">{hint}</span></span>
     </label>
+  );
+}
+
+function Slider({ label, value, onChange, disabled }: { label: string; value: number; onChange: (v: number) => void; disabled?: boolean }) {
+  return (
+    <label className="slider-row">
+      <span>{label}</span>
+      <input type="range" min={0} max={100} step={5} value={Math.round(value * 100)} disabled={disabled} onChange={(e) => onChange(Number(e.target.value) / 100)} aria-label={label} />
+      <b className="tnum">{Math.round(value * 100)}%</b>
+    </label>
+  );
+}
+
+const GRAPHICS: [Graphics, string, string][] = [
+  ['auto', 'Auto', 'Starts on the best level your iPad can keep smooth, and steps down if it slows.'],
+  ['high', 'High', 'Real shadows, up to 300 people on screen, full traffic and sharpness.'],
+  ['medium', 'Medium', 'Soft shadows, up to 150 people, lighter traffic.'],
+  ['saver', 'Battery saver', 'No shadows, a few people, no traffic or weather, 30 frames a second.'],
+];
+
+function SoundGraphics() {
+  const me = useGame((s) => s.me)!;
+  const { sound: snd, setSound, graphics, setGraphics, quality } = useSettings();
+  const save = (patch: Record<string, unknown>) => rpc<any>('set_prefs', { p_prefs: patch }).then((prefs) => useGame.setState({ me: { ...me, prefs } })).catch(() => {});
+  return (
+    <div className="stack">
+      <section className="card stack">
+        <div className="row between">
+          <strong className="row"><Icon name={snd.muted ? 'mute' : 'sound'} /> Sound</strong>
+          <button className="btn small ghost" onClick={() => { sound.unlock(); setSound({ muted: !snd.muted }); save({ sound: { ...snd, muted: !snd.muted } }); }}>
+            {snd.muted ? 'Turn on' : 'Mute'}
+          </button>
+        </div>
+        <Slider label="Master" value={snd.master} disabled={snd.muted} onChange={(v) => setSound({ master: v })} />
+        <Slider label="Effects" value={snd.effects} disabled={snd.muted} onChange={(v) => { setSound({ effects: v }); sound.play('sale', { amount: 12000 }); }} />
+        <Slider label="City sounds" value={snd.ambience} disabled={snd.muted} onChange={(v) => setSound({ ambience: v })} />
+        <p className="small muted">Sound starts after your first tap (iPads don't allow it before). City sounds fade as you zoom out.</p>
+      </section>
+      <section className="card stack">
+        <strong className="row"><Icon name="sparkle" /> Graphics</strong>
+        <div className="choice-list" role="radiogroup" aria-label="Graphics quality">
+          {GRAPHICS.map(([k, label, hint]) => (
+            <button
+              key={k}
+              role="radio"
+              aria-checked={graphics === k}
+              className={`choice ${graphics === k ? 'on' : ''}`}
+              onClick={() => {
+                setGraphics(k);
+                save({ graphics: k });
+              }}
+            >
+              <b>{label}{k === 'auto' && graphics === 'auto' ? ` (now ${quality === 'saver' ? 'battery saver' : quality})` : ''}</b>
+              <span className="small muted">{hint}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <Toggle k="reduce_motion" label="Reduce motion" hint="Skip camera flights and celebrations. Also on when your iPad's Reduce Motion setting is on." />
+    </div>
   );
 }
 

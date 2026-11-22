@@ -2,7 +2,10 @@
   "name": "crancapital",
   "private": true,
   "type": "module",
-  "workspaces": ["client", "tools"],
+  "workspaces": [
+    "client",
+    "tools"
+  ],
   "scripts": {
     "dev": "npm --workspace client run dev",
     "build": "npm --workspace client run build",
@@ -10,7 +13,8 @@
     "citydata": "npm --workspace tools run citydata",
     "local:start": "tools/local-supabase/start.sh",
     "local:stop": "tools/local-supabase/stop.sh",
-    "db:local": "tools/db/apply-local.sh"
+    "db:local": "tools/db/apply-local.sh",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.test.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.80.0",

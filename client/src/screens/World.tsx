@@ -1,12 +1,20 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import GameMap, { type MapApi } from '../map/GameMap';
-import { useGame, act, cityOf, cityName } from '../lib/store';
+import { useGame, act, cityName } from '../lib/store';
 import { rpc } from '../lib/supabase';
 import { loadCity, trafficAt, distM, type CityData } from '../lib/citydata';
 import { joinWorld, leaveWorld } from '../lib/realtime';
-import { money, localTime, ringFor, until } from '../lib/format';
-import { Avatar, Modal, Progress } from '../ui/components';
+import { money, ringFor, until } from '../lib/format';
+import { Modal } from '../ui/components';
 import AwayCard from '../ui/AwayCard';
+import { HudMoney, CityStrip, HudRight } from '../ui/hud/Hud';
+import { Dock } from '../ui/hud/Dock';
+import { MapTools } from '../ui/hud/MapTools';
+import { Icon } from '../ui/Icon';
+import { Moments } from '../ui/Moments';
+import { PhotoMode } from '../ui/PhotoMode';
+import { reducedMotion } from '../lib/settings';
+import { trafficLabel } from '../ui/common';
 import type { Me } from '../lib/types';
 
 const BusinessWindow = lazy(() => import('../ui/panels/BusinessWindow'));
@@ -24,6 +32,9 @@ const ProfileWindow = lazy(() => import('../ui/panels/ProfileWindow'));
 const TravelWindow = lazy(() => import('../ui/panels/TravelWindow'));
 const NotificationsWindow = lazy(() => import('../ui/panels/NotificationsWindow'));
 const ModWindow = lazy(() => import('../ui/panels/ModWindow'));
+const EmpireWindow = lazy(() => import('../ui/panels/EmpireWindow'));
+const PeopleWindow = lazy(() => import('../ui/panels/PeopleWindow'));
+const MoreWindow = lazy(() => import('../ui/panels/MoreWindow'));
 
 const WINDOWS: Record<string, React.ComponentType<any>> = {
   business: BusinessWindow,
@@ -41,18 +52,12 @@ const WINDOWS: Record<string, React.ComponentType<any>> = {
   travel: TravelWindow,
   notifications: NotificationsWindow,
   mod: ModWindow,
+  empire: EmpireWindow,
+  people: PeopleWindow,
+  more: MoreWindow,
 };
 
 type Pending = { kind: 'buy-cart' | 'move-cart'; lat: number; lng: number; businessId?: number } | null;
-
-function Clock({ tz }: { tz: string }) {
-  const [t, setT] = useState(localTime(tz));
-  useEffect(() => {
-    const i = setInterval(() => setT(localTime(tz)), 20_000);
-    return () => clearInterval(i);
-  }, [tz]);
-  return <>{t}</>;
-}
 
 function TravelBanner({ me }: { me: Me }) {
   const [, tick] = useState(0);
@@ -68,7 +73,7 @@ function TravelBanner({ me }: { me: Me }) {
   }, [me.travel_arrive_at]);
   return (
     <div className="mode-banner travel-banner" role="status">
-      ✈️ Flying to {cityName(me.travel_to)} · lands in {until(me.travel_arrive_at)}
+      <Icon name="plane" size={20} accent="rgba(255,255,255,.4)" /> Flying to {cityName(me.travel_to)} · lands in {until(me.travel_arrive_at)}
     </div>
   );
 }
@@ -87,7 +92,46 @@ export default function World() {
   const [taxi, setTaxi] = useState<{ lat: number; lng: number; cost: number } | null>(null);
   const api = useRef<MapApi | null>(null);
   const cityId = me.city_id ?? me.travel_from ?? 'london';
-  const cityInfo = cityOf(cityId);
+  const inset = useGame((s) => s.inset);
+  // Coming back: a 3-second fast-forward of the city (the sun sweeps across,
+  // the cash counter rolls up), then the summary. A tap skips it.
+  const [ffDone, setFfDone] = useState(false);
+  // Photo mode (from More) and the empire tour banner.
+  const [photo, setPhoto] = useState(false);
+  const [tour, setTour] = useState<{ name: string; business: string; i: number; n: number } | null>(null);
+  useEffect(() => {
+    const onPhoto = () => setPhoto(true);
+    const onTour = (e: Event) => setTour((e as CustomEvent).detail);
+    window.addEventListener('cc:photo', onPhoto);
+    window.addEventListener('cc:tour', onTour);
+    return () => {
+      window.removeEventListener('cc:photo', onPhoto);
+      window.removeEventListener('cc:tour', onTour);
+    };
+  }, []);
+  useEffect(() => {
+    if (!away) return;
+    if (reducedMotion(me.prefs) || !away.hours) {
+      setFfDone(true);
+      return;
+    }
+    setFfDone(false);
+    const start = setTimeout(() => window.dispatchEvent(new CustomEvent('cc:fastforward', { detail: { hours: Number(away.hours), net: Number(away.net ?? 0) } })), 1200);
+    const done = setTimeout(() => setFfDone(true), 4400);
+    const skip = () => setFfDone(true);
+    window.addEventListener('pointerdown', skip, { once: true });
+    return () => {
+      clearTimeout(start);
+      clearTimeout(done);
+      window.removeEventListener('pointerdown', skip);
+    };
+  }, [away]);
+  // New players: the Build button glows until their first business exists.
+  const refreshKey = useGame((s) => s.refreshKey);
+  const [hasBusiness, setHasBusiness] = useState(true);
+  useEffect(() => {
+    rpc<any[]>('my_businesses').then((l) => setHasBusiness(l.length > 0)).catch(() => {});
+  }, [refreshKey]);
 
   useEffect(() => {
     let alive = true;
@@ -148,12 +192,15 @@ export default function World() {
     setTaxi({ lat, lng, cost: Math.round(3000 + km * 2000) });
   };
 
+  // Keep what you're looking at clear of the open sheet.
+  useEffect(() => {
+    api.current?.setPadding(inset);
+  }, [inset]);
+
   const Win = win ? WINDOWS[win.id] : null;
-  const nextTier = me.next_tier;
-  const prevNw = useGame.getState().catalog?.tiers.find((t) => t.tier === me.tier)?.net_worth ?? 0;
 
   return (
-    <div className="game">
+    <div className={`game ${photo ? 'photo' : ''}`}>
       {city && (
         <GameMap
           key={city.meta.id}
@@ -166,32 +213,11 @@ export default function World() {
       )}
 
       <div className="hud">
-        <div className="hud-pill">
-          <button onClick={() => open('account')} aria-label="Your account">
-            <Avatar skin={me.skin} ring={ringFor(me.net_worth)} ringStyle={me.ring_style} size={36} />
-          </button>
-          <div>
-            <div className="hud-cash" title="Cash">{money(me.cash, { cents: false })}</div>
-            <div className="hud-sub">Net worth {money(me.net_worth, { compact: true })} · Tier {me.tier}</div>
-          </div>
-          {nextTier && (
-            <div className="tierbar hide-sm" title={`Tier ${nextTier.tier} (${nextTier.name}) at ${money(nextTier.net_worth, { compact: true })}`}>
-              <Progress value={Math.max(0, me.peak_net_worth - prevNw)} max={nextTier.net_worth - prevNw} color="var(--gold)" />
-              <div className="hud-sub">Next: {nextTier.name}</div>
-            </div>
-          )}
+        <HudMoney />
+        <div className="grow hud-mid">
+          <CityStrip cityId={cityId} />
         </div>
-        <div className="grow" />
-        <button className="hud-pill" onClick={() => open('travel')} style={{ cursor: 'pointer' }}>
-          <span style={{ fontSize: 20, paddingLeft: 6 }}>{cityInfo?.climate === 'warm' ? '🌴' : '🏙️'}</span>
-          <div style={{ textAlign: 'left' }}>
-            <div className="hud-city">{cityInfo?.name}</div>
-            <div className="hud-sub">{cityInfo && <Clock tz={cityInfo.tz} />} local</div>
-          </div>
-        </button>
-        <button className="bell" onClick={() => open('notifications')} aria-label={`Notifications${me.unread ? `, ${me.unread} unread` : ''}`}>
-          🔔{me.unread > 0 && <span className="dot">{me.unread > 99 ? '99+' : me.unread}</span>}
-        </button>
+        <HudRight onEmpireView={() => api.current?.empireView()} />
       </div>
 
       {me.travel_to && <TravelBanner me={me} />}
@@ -211,24 +237,19 @@ export default function World() {
         </div>
       )}
 
-      <div className="fabs">
-        <button className="fab" title="Find me" aria-label="Find me" onClick={() => { const p = useGame.getState().pos; if (p) api.current?.flyTo(p.lat, p.lng); }}>📍</button>
-        <button className={`fab ${mode.kind === 'land' ? 'on' : ''}`} title="Land and plots" aria-label="Land mode" onClick={() => set({ mode: mode.kind === 'land' ? { kind: 'walk' } : { kind: 'land' } })}>🗺️</button>
-        <button className={`fab ${heat ? 'on' : ''}`} title="Foot traffic heat map" aria-label="Foot traffic heat map" onClick={() => { setHeat(!heat); api.current?.setHeatmap(!heat); }}>🔥</button>
-        <button className={`fab ${mode.kind === 'taxi' ? 'on' : ''}`} title="Taxi" aria-label="Taxi" onClick={() => set({ mode: mode.kind === 'taxi' ? { kind: 'walk' } : { kind: 'taxi' } })}>🚕</button>
-      </div>
+      <MapTools
+        heat={heat}
+        onHeat={() => {
+          setHeat(!heat);
+          api.current?.setHeatmap(!heat);
+        }}
+        onFindMe={() => {
+          const p = useGame.getState().pos;
+          if (p) api.current?.flyTo(p.lat, p.lng);
+        }}
+      />
 
-      <nav className="dock" aria-label="Game menu">
-        <button className="primary" onClick={() => open('build')}><span>➕</span><span>Build</span></button>
-        <button className={win?.id === 'businesses' ? 'on' : ''} onClick={() => open('businesses')}><span>🏪</span><span>Business</span></button>
-        <button className={win?.id === 'market' ? 'on' : ''} onClick={() => open('market')}><span>📈</span><span>Market</span></button>
-        <button className={win?.id === 'inventory' ? 'on' : ''} onClick={() => open('inventory')}><span>📦</span><span>Storage</span></button>
-        <button className={win?.id === 'bank' ? 'on' : ''} onClick={() => open('bank')}><span>🏦</span><span>Bank</span></button>
-        <button className={win?.id === 'community' ? 'on' : ''} onClick={() => open('community')}><span>💬</span><span>Community</span></button>
-        <button className={win?.id === 'leaderboard' ? 'on' : ''} onClick={() => open('leaderboard')}><span>🏆</span><span>Leaders</span></button>
-        <button className={win?.id === 'wiki' ? 'on' : ''} onClick={() => open('wiki')}><span>📖</span><span>Help</span></button>
-        {me.role !== 'player' && <button className={win?.id === 'mod' ? 'on' : ''} onClick={() => open('mod')}><span>🛡️</span><span>Staff</span></button>}
-      </nav>
+      <Dock glowBuild={!hasBusiness && mode.kind === 'walk' && !win} />
 
       {Win && (
         <Suspense fallback={null}>
@@ -246,6 +267,7 @@ export default function World() {
                 x.starter_stock ? 'Your cart is open! We put some starter stock in your storage.' : 'Your cart is open!'
               );
               if (r) {
+                window.dispatchEvent(new CustomEvent('cc:built', { detail: { id: r.business_id } }));
                 setCartPrompt(null);
                 set({ mode: { kind: 'walk' } });
                 const fresh = await rpc<Me>('get_me');
@@ -255,9 +277,7 @@ export default function World() {
               }
             }}
           >
-            <p className="muted">
-              Foot traffic here: <b>{trafficAt(city, cartPrompt.lat, cartPrompt.lng).toFixed(2)}</b> (1.0 is a normal street; busy spots near stations and sights go above 2).
-            </p>
+            <TrafficStars value={trafficAt(city, cartPrompt.lat, cartPrompt.lng)} />
             <label className="field">
               <span>Cart name</span>
               <input className="input" value={cartName} onChange={(e) => setCartName(e.target.value)} maxLength={40} />
@@ -280,7 +300,14 @@ export default function World() {
               onClick={async () => {
                 const r = await act(() => rpc<any>('taxi', { p_lat: taxi.lat, p_lng: taxi.lng }), (x) => `Taxi ride: ${money(x.cost)}`);
                 if (r) {
-                  set({ pos: { lat: taxi.lat, lng: taxi.lng }, walkingTo: null, mode: { kind: 'walk' } });
+                  const from = useGame.getState().pos;
+                  const to = { lat: taxi.lat, lng: taxi.lng };
+                  set({ walkingTo: null, mode: { kind: 'walk' } });
+                  setTaxi(null);
+                  // The taxi pulls up and you get in before it drives you there.
+                  if (from) window.dispatchEvent(new CustomEvent('cc:taxi', { detail: { from, to } }));
+                  await new Promise((res) => setTimeout(res, (window as any).__ccWorld ? 2000 : 0));
+                  set({ pos: to });
                   const fresh = await rpc<Me>('get_me');
                   set({ me: fresh });
                 }
@@ -293,7 +320,30 @@ export default function World() {
         </Modal>
       )}
 
-      {away && <AwayCard away={away} onClose={() => set({ away: null })} />}
+      {away && ffDone && <AwayCard away={away} onClose={() => set({ away: null })} />}
+      <Moments api={api} />
+      {photo && <PhotoMode api={api} onClose={() => setPhoto(false)} />}
+      {tour && (
+        <div className="mode-banner tour-banner" role="status">
+          <Icon name="eye" size={20} /> Visiting {tour.name}’s empire · {tour.business} ({tour.i} of {tour.n})
+          <button className="btn small" onClick={() => setTour(null)}>Stop</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Foot traffic as Quiet / Busy / Packed with stars, and the exact number.
+function TrafficStars({ value }: { value: number }) {
+  const t = trafficLabel(value);
+  return (
+    <div className="traffic-stars">
+      <span className="stars" aria-hidden>
+        {[1, 2, 3].map((i) => <Icon key={i} name="star" size={22} accent={i <= t.stars ? 'var(--gold)' : 'transparent'} />)}
+      </span>
+      <span>
+        <b>{t.label}</b> street <span className="muted small">· foot traffic {value.toFixed(2)} (1.0 is a normal street)</span>
+      </span>
     </div>
   );
 }

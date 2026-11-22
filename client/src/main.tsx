@@ -9,8 +9,10 @@ import './styles/app.css';
 import './styles/touch.css';
 import App from './App';
 import { installErrorReporting } from './lib/errors';
+import { installSound } from './audio/sound';
 
 installErrorReporting();
+installSound();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -210,3 +210,61 @@ export function mapStyle(p: Palette = LIGHT): StyleSpecification {
     ],
   } as StyleSpecification;
 }
+
+// The city after dark: deep navy streets, warm-lit buildings.
+export const NIGHT: Palette = {
+  land: '#232a48',
+  park: '#1f3338',
+  water: '#15305a',
+  road: '#414b7a',
+  roadCasing: '#2a3158',
+  minor: '#38416c',
+  path: '#414b7a',
+  rail: '#4a5480',
+  building: '#4c5280',
+  buildingTop: '#555b8a',
+  label: '#d8def5',
+  labelHalo: '#141a33',
+};
+
+function hexMix(a: string, b: string, k: number) {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return '#' + pa.map((x, i) => Math.round(x + (pb[i] - x) * k).toString(16).padStart(2, '0')).join('');
+}
+
+// Blend two palettes (0 = a, 1 = b).
+export function blendPalette(a: Palette, b: Palette, k: number): Palette {
+  const out = {} as Palette;
+  for (const key of Object.keys(a) as (keyof Palette)[]) out[key] = hexMix(a[key], b[key], Math.max(0, Math.min(1, k)));
+  return out;
+}
+
+// Wet streets: darker, slightly blue and shiny-looking.
+export function wetPalette(p: Palette, k: number): Palette {
+  return { ...p, road: hexMix(p.road, '#8a98b0', k * 0.45), minor: hexMix(p.minor, '#9aa6ba', k * 0.4), land: hexMix(p.land, '#a9a59a', k * 0.25) };
+}
+
+// Recolour the base map in place (used as the day turns to night).
+export function applyPalette(map: { getLayer: (id: string) => unknown; setPaintProperty: (l: string, k: string, v: any) => void }, p: Palette) {
+  const set = (id: string, key: string, v: any) => {
+    if (map.getLayer(id)) map.setPaintProperty(id, key, v);
+  };
+  set('background', 'background-color', p.land);
+  set('landuse', 'fill-color', p.buildingTop);
+  set('landcover', 'fill-color', p.park);
+  set('park', 'fill-color', p.park);
+  set('water', 'fill-color', p.water);
+  set('waterway', 'line-color', p.water);
+  set('path', 'line-color', p.path);
+  set('road-casing', 'line-color', p.roadCasing);
+  set('road', 'line-color', ['match', ['get', 'class'], ['minor', 'service'], p.minor, p.road]);
+  set('rail', 'line-color', p.rail);
+  set('building-flat', 'fill-color', statusColor(p));
+  set('building-3d', 'fill-extrusion-color', statusColor(p));
+  for (const id of ['road-label', 'place-label']) {
+    set(id, 'text-color', p.label);
+    set(id, 'text-halo-color', p.labelHalo);
+  }
+  set('water-label', 'text-halo-color', p.labelHalo);
+}

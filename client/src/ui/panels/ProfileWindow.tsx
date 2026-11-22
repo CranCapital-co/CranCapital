@@ -3,8 +3,9 @@ import { rpc } from '../../lib/supabase';
 import { useGame, act, catalog, cityName } from '../../lib/store';
 import { date, money, num } from '../../lib/format';
 import { Window, useApi, Loading, Avatar, Stat, Field, Modal } from '../components';
+import { Icon } from '../Icon';
 
-export default function ProfileWindow({ params }: { params: { player_no: number } }) {
+export default function ProfileWindow({ params, api }: { params: { player_no: number }; api?: any }) {
   const { data: p, reload, loading } = useApi(() => rpc<any>('public_profile', { p_player_no: params.player_no }), [params.player_no]);
   const open = useGame((s) => s.open);
   const [report, setReport] = useState(false);
@@ -14,7 +15,7 @@ export default function ProfileWindow({ params }: { params: { player_no: number 
   if (!p && !loading) return <Window title="Player"><p>This player isn’t around any more.</p></Window>;
   if (!p) return <Window title="Player"><Loading /></Window>;
   return (
-    <Window title={p.name} icon="👤">
+    <Window title={p.name} icon="account">
       <div className="stack">
         <div className="row">
           <Avatar skin={p.skin} ring={p.ring} ringStyle={p.ring_style} size={72} />
@@ -29,12 +30,23 @@ export default function ProfileWindow({ params }: { params: { player_no: number 
         <div className="grid3">
           <Stat label="Net worth" value={money(p.net_worth, { compact: true })} sub={`rank #${p.rank}`} />
           <Stat label="Businesses" value={num(p.businesses)} />
-          <Stat label="Property" value={`${num(p.buildings)} 🏢 ${num(p.plots)} 🗺️`} />
+          <Stat label="Property" value={`${num(p.buildings)} buildings · ${num(p.plots)} plots`} />
         </div>
+        {p.businesses > 0 && api && (
+          <button
+            className="btn"
+            onClick={() => {
+              useGame.getState().close();
+              api.tour(params.player_no, p.name);
+            }}
+          >
+            <Icon name="eye" /> Visit their empire
+          </button>
+        )}
         <div className="row wrap" style={{ gap: 6 }}>
           {p.badges.map((b: any, i: number) => {
             const meta = cat.badges.find((x) => x.id === b.badge);
-            return <span key={i} className="chip" title={meta?.description}>{meta?.icon} {meta?.name}</span>;
+            return <span key={i} className="chip" title={meta?.description}><Icon name="medal" size={14} /> {meta?.name}</span>;
           })}
         </div>
         {!p.me && (

@@ -4,6 +4,7 @@ import { subscribeChat } from '../../lib/realtime';
 import { useGame, act, cityName } from '../../lib/store';
 import { ago } from '../../lib/format';
 import { Window, Tabs, useApi, Loading, Avatar, Empty, Field, Modal } from '../components';
+import { Icon } from '../Icon';
 
 type Tab = 'chat' | 'friends' | 'boards' | 'discord';
 
@@ -24,7 +25,7 @@ const LINK = /(https?:|www\.|[a-z0-9-]+\s*(\.|\[\s*dot\s*\]|\(\s*dot\s*\))\s*(co
 export default function CommunityWindow({ params }: { params?: { tab?: Tab; channel?: number } }) {
   const [tab, setTab] = useState<Tab>(params?.tab ?? 'chat');
   return (
-    <Window title="Community" icon="💬" wide>
+    <Window title="Community" icon="chat" wide>
       <div className="stack" style={{ height: '100%' }}>
         <Tabs tabs={[['chat', 'Chat'], ['friends', 'Friends'], ['boards', 'Boards'], ['discord', 'Discord']]} value={tab} onChange={setTab} />
         {tab === 'chat' && <Chat initial={params?.channel} />}
@@ -127,7 +128,7 @@ function Chat({ initial }: { initial?: number }) {
     }
   };
 
-  const label = (c: any) => (c.kind === 'dm' ? `@${c.with?.name}` : c.kind === 'city' ? `${c.name}${c.city_id === me.city_id ? ' (here)' : ''}` : c.kind === 'global' ? '🌍 Global' : `#${c.name}`);
+  const label = (c: any) => (c.kind === 'dm' ? `@${c.with?.name}` : c.kind === 'city' ? `${c.name}${c.city_id === me.city_id ? ' (here)' : ''}` : c.kind === 'global' ? 'Global' : `#${c.name}`);
 
   return (
     <div className="chat">
@@ -214,7 +215,7 @@ function Friends() {
           ))}
         </div>
       )}
-      {friends.length === 0 ? <Empty icon="🤝" title="No friends yet">Add players by their number (on their profile). Friends can see which city you’re in.</Empty> : (
+      {friends.length === 0 ? <Empty icon="handshake" title="No friends yet">Add players by their number (on their profile). Friends can see which city you’re in.</Empty> : (
         <table className="list">
           <tbody>
             {friends.map((f) => (
@@ -244,11 +245,11 @@ function Boards() {
   return (
     <div className="stack">
       <div className="row between wrap">
-        <Tabs tabs={[['bugs', '🐞 Bug Reports'], ['ideas', '💡 Suggestions']]} value={board} onChange={setBoard} />
+        <Tabs tabs={[['bugs', 'Bug reports'], ['ideas', 'Suggestions']]} value={board} onChange={setBoard} />
         <Tabs tabs={[['top', 'Top'], ['new', 'New']]} value={sort} onChange={setSort} />
       </div>
       <button className="btn small" onClick={() => setWriting(true)}>{board === 'bugs' ? 'Report a bug' : 'Suggest something'}</button>
-      {!data ? <Loading /> : data.length === 0 ? <Empty icon={board === 'bugs' ? '🐞' : '💡'} title="Nothing here yet" /> : data.map((p) => (
+      {!data ? <Loading /> : data.length === 0 ? <Empty icon={board === 'bugs' ? 'bug' : 'idea'} title="Nothing here yet" /> : data.map((p) => (
         <button key={p.id} className="card click row top" style={{ textAlign: 'left' }} onClick={() => setPost(p.id)}>
           <div className="center" style={{ minWidth: 44 }}>
             <div style={{ fontWeight: 800 }}>{p.votes}</div>
@@ -260,7 +261,7 @@ function Boards() {
               <span className={`chip ${p.status === 'done' ? 'green' : p.status === 'duplicate' || p.status === 'wont_do' ? '' : 'blue'}`}>{p.status.replace('_', ' ')}</span>
               <span>{p.author?.name}</span>
               <span>{ago(p.created_at)}</span>
-              <span>💬 {p.comments}</span>
+              <span className="row" style={{ gap: 4 }}><Icon name="chat" size={16} /> {p.comments}</span>
             </div>
           </div>
         </button>
@@ -385,7 +386,7 @@ function Discord() {
   return (
     <div className="stack">
       <p className="small muted">Community Discord servers. This is the only place links appear in CranCapital: you give an invite code and the game builds the link.</p>
-      {!data ? <Loading /> : list.length === 0 ? <Empty icon="🎧" title="No servers listed yet" /> : list.map((d) => (
+      {!data ? <Loading /> : list.length === 0 ? <Empty icon="headset" title="No servers listed yet" /> : list.map((d) => (
         <div key={d.id} className="card row between">
           <div className="grow">
             <strong>{d.name}</strong>

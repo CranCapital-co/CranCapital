@@ -4,6 +4,7 @@ import { money } from '../../lib/format';
 import { Window, useApi, Loading, Empty, Money } from '../components';
 import { flagList } from '../common';
 import type { Business } from '../../lib/types';
+import { BizIcon } from '../Icon';
 
 export default function BusinessesWindow({ api }: { api: any }) {
   const open = useGame((s) => s.open);
@@ -11,11 +12,11 @@ export default function BusinessesWindow({ api }: { api: any }) {
   const list = data ?? [];
   const today = list.reduce((a, b) => a + (b.revenue_today ?? 0) - (b.costs_today ?? 0), 0);
   return (
-    <Window title="My businesses" icon="🏪">
+    <Window title="My businesses" icon="shop">
       {loading && !data ? (
         <Loading />
       ) : list.length === 0 ? (
-        <Empty icon="🛒" title="No businesses yet">
+        <Empty icon="cart" title="No businesses yet">
           Open the Build menu and park your first food cart on a busy street.
           <div style={{ marginTop: 12 }}>
             <button className="btn" onClick={() => open('build')}>Build something</button>
@@ -40,7 +41,7 @@ export default function BusinessesWindow({ api }: { api: any }) {
                 }}
               >
                 <div className="row">
-                  <span style={{ fontSize: 26 }}>{b.icon}</span>
+                  <BizIcon kind={b.kind} tier={useGame.getState().catalog?.business_types.find((t) => t.id === b.kind)?.tier} size={30} />
                   <div className="grow">
                     <div className="row between">
                       <strong className="ellipsis">{b.name}</strong>

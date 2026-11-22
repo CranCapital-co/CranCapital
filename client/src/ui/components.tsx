@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Icon } from './Icon';
 import { useGame } from '../lib/store';
 import { avatarDataUrl } from '../map/icons';
 import { money } from '../lib/format';
@@ -42,19 +43,136 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], every = 0)
   return { data, error, loading, reload: load, setData };
 }
 
+// Windows render as sheets: on iPad a side panel you can drag wider or
+// swipe away; on phones a bottom sheet with three heights (peek, half, full)
+// so the map stays usable. Inside a tabbed window (Empire, People) they
+// render only their content.
+export const EmbedContext = createContext(false);
+
 export function Window({ title, icon, children, onBack, wide, actions }: { title: ReactNode; icon?: string; children: ReactNode; onBack?: () => void; wide?: boolean; actions?: ReactNode }) {
-  const close = useGame((s) => s.close);
+  const embedded = useContext(EmbedContext);
+  if (embedded) {
+    return (
+      <div className="embedded">
+        {actions && <div className="row embedded-actions">{actions}</div>}
+        {children}
+      </div>
+    );
+  }
   return (
-    <aside className={`window ${wide ? 'wide' : ''}`} role="dialog" aria-label={typeof title === 'string' ? title : undefined}>
-      <header className="window-head">
-        {onBack && (
-          <button className="btn ghost icon small" onClick={onBack} aria-label="Back">←</button>
-        )}
-        {icon && <span className="window-icon" aria-hidden>{icon}</span>}
-        <h2 className="grow ellipsis">{title}</h2>
-        {actions}
-        <button className="btn ghost icon small" onClick={close} aria-label="Close">✕</button>
-      </header>
+    <Sheet title={title} icon={icon} onBack={onBack} wide={wide} actions={actions}>
+      {children}
+    </Sheet>
+  );
+}
+
+function useMedia(q: string) {
+  const [m, setM] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [q]);
+  return m;
+}
+
+type Snap = 'peek' | 'half' | 'full';
+const SNAPS: Snap[] = ['peek', 'half', 'full'];
+
+function Sheet({ title, icon, children, onBack, wide, actions }: { title: ReactNode; icon?: string; children: ReactNode; onBack?: () => void; wide?: boolean; actions?: ReactNode }) {
+  const { close, back } = useGame.getState();
+  const depth = useGame((s) => s.stack.length);
+  const phone = useMedia('(max-width: 720px)');
+  const ref = useRef<HTMLElement>(null);
+  const [isWide, setWide] = useState(!!wide);
+  const [snap, setSnap] = useState<Snap>('half');
+  const [drag, setDrag] = useState(0);
+  const start = useRef<{ x: number; y: number; id: number } | null>(null);
+
+  // Tell the map how much of it the sheet covers.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const report = () => {
+      const r = el.getBoundingClientRect();
+      const inset = phone ? { right: 0, bottom: Math.max(0, window.innerHeight - r.top) } : { right: Math.max(0, window.innerWidth - r.left), bottom: 0 };
+      const cur = useGame.getState().inset;
+      if (Math.abs(cur.right - inset.right) > 4 || Math.abs(cur.bottom - inset.bottom) > 4) useGame.setState({ inset });
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    const t = setTimeout(report, 260); // after the slide-in
+    return () => {
+      ro.disconnect();
+      clearTimeout(t);
+    };
+  }, [phone, isWide, snap]);
+
+  const onDown = (e: React.PointerEvent) => {
+    if ((e.target as Element).closest('button, input, select, a')) return;
+    start.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const s = start.current;
+    if (!s || s.id !== e.pointerId) return;
+    setDrag(phone ? e.clientY - s.y : e.clientX - s.x);
+  };
+  const onUp = (e: React.PointerEvent) => {
+    const s = start.current;
+    if (!s || s.id !== e.pointerId) return;
+    start.current = null;
+    const d = phone ? e.clientY - s.y : e.clientX - s.x;
+    setDrag(0);
+    if (Math.abs(d) < 8) {
+      // A tap on the handle: phones cycle the height, iPad toggles the width.
+      if (phone) setSnap(SNAPS[(SNAPS.indexOf(snap) + 1) % 3]);
+      else setWide(!isWide);
+      return;
+    }
+    if (phone) {
+      const i = SNAPS.indexOf(snap);
+      if (d > 70) i === 0 ? close() : setSnap(SNAPS[i - 1]);
+      else if (d < -70) setSnap(SNAPS[Math.min(2, i + 1)]);
+    } else {
+      if (d > 110) close();
+      else if (d < -50) setWide(true);
+      else if (d > 40) isWide ? setWide(false) : close();
+    }
+  };
+
+  const style: React.CSSProperties = drag
+    ? phone
+      ? { transform: `translateY(${Math.max(-40, drag)}px)`, transition: 'none' }
+      : { transform: `translateX(${Math.max(-30, drag)}px)`, transition: 'none' }
+    : {};
+  const showBack = onBack || depth > 1;
+
+  return (
+    <aside ref={ref} className={`window sheet ${isWide ? 'wide' : ''} ${phone ? `snap-${snap}` : ''}`} style={style} role="dialog" aria-label={typeof title === 'string' ? title : undefined}>
+      <div className="sheet-grab" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} data-silent>
+        <span className="sheet-handle" aria-hidden />
+        <header className="window-head">
+          {showBack && (
+            <button className="btn ghost icon small" onClick={onBack ?? back} aria-label="Back">
+              <Icon name="back" />
+            </button>
+          )}
+          {icon && <span className="window-icon" aria-hidden>{/^[a-zA-Z]/.test(icon) ? <Icon name={icon} size={24} /> : icon}</span>}
+          <h2 className="grow ellipsis">{title}</h2>
+          {actions}
+          {!phone && (
+            <button className="btn ghost icon small hide-narrow" onClick={() => setWide(!isWide)} aria-label={isWide ? 'Make narrower' : 'Make wider'}>
+              <Icon name={isWide ? 'narrow' : 'widen'} size={18} />
+            </button>
+          )}
+          <button className="btn ghost icon small" onClick={close} aria-label="Close">
+            <Icon name="close" />
+          </button>
+        </header>
+      </div>
       <div className="window-body scroll">{children}</div>
     </aside>
   );
@@ -153,7 +271,7 @@ export function Loading({ lines = 3 }: { lines?: number }) {
 export function Empty({ icon, title, children }: { icon: string; title: string; children?: ReactNode }) {
   return (
     <div className="empty">
-      <div className="empty-icon" aria-hidden>{icon}</div>
+      <div className="empty-icon" aria-hidden>{/^[a-zA-Z]/.test(icon) ? <Icon name={icon} size={40} accent="var(--gold)" /> : icon}</div>
       <strong>{title}</strong>
       {children && <div className="muted small">{children}</div>}
     </div>

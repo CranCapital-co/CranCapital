@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Window } from '../components';
 import { WIKI, wikiMarkdown, Markdown } from '../../screens/Pages';
+import { Icon } from '../Icon';
 
 export default function WikiWindow({ params }: { params?: { slug?: string } }) {
   const [slug, setSlug] = useState<string | null>(params?.slug ?? null);
   const text = slug ? wikiMarkdown(slug) : null;
   return (
-    <Window title={slug ? WIKI.find((p) => p.slug === slug)?.title ?? 'Help' : 'Help and wiki'} icon="📖" onBack={slug ? () => setSlug(null) : undefined}>
+    <Window title={slug ? WIKI.find((p) => p.slug === slug)?.title ?? 'Help' : 'Help and wiki'} icon="book" onBack={slug ? () => setSlug(null) : undefined}>
       {text ? (
         <div
           onClick={(e) => {
@@ -23,7 +24,7 @@ export default function WikiWindow({ params }: { params?: { slug?: string } }) {
       ) : (
         <div className="stack">
           <a className="card click row between" href="#/tutorial" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span>🏝️ <b>Replay Tutorial Island</b><br /><span className="small muted">Walk, park a cart, set a menu and sell, step by step.</span></span>
+            <span><Icon name="island" size={22} accent="var(--sky)" /> <b>Replay Tutorial Island</b><br /><span className="small muted">Walk, park a cart, set a menu and sell, step by step.</span></span>
             <span>→</span>
           </a>
           {WIKI.map((p) => (

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
+import { sound } from '../audio/sound';
+import { useIncome } from '../lib/income';
 import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY, AUTH_ERROR } from '../lib/supabase';
 import { useGame } from '../lib/store';
 import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/realtime';
 import { localTime } from '../lib/format';
 import type { Catalog, Me } from '../lib/types';
 import World from './World';
+import { Icon } from '../ui/Icon';
 
 function Brand() {
   return (
@@ -177,7 +180,7 @@ function TutorialOffer({ onSkip }: { onSkip: () => void }) {
   return (
     <div className="center-screen">
       <div className="auth-card stack center">
-        <div style={{ fontSize: 48 }}>🏝️</div>
+        <Icon name="island" size={56} accent="var(--sky)" />
         <h1 style={{ fontSize: 28 }}>Visit Tutorial Island?</h1>
         <p className="muted">A small practice town where you’ll walk, park a cart, set a menu and sell to passing crowds. It takes about three minutes and earns you the Graduate badge and skin.</p>
         <a className="btn gold block" href="#/tutorial">Go to Tutorial Island</a>
@@ -188,6 +191,13 @@ function TutorialOffer({ onSkip }: { onSkip: () => void }) {
 }
 
 function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: string) => Promise<void> }) {
+  // Today's weather and who's online in each city.
+  const [weather, setWeather] = useState<any[] | null>(null);
+  const [stats, setStats] = useState<any[] | null>(null);
+  useEffect(() => {
+    rpc<any[]>('city_weather').then(setWeather).catch(() => {});
+    rpc<any[]>('city_stats').then(setStats).catch(() => {});
+  }, []);
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -209,17 +219,7 @@ function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: stri
         <p className="muted">Real streets, real local time. You can fly to the others later.</p>
         <div className="city-cards">
           {catalog.cities.filter((c) => c.open).map((c) => (
-            <button key={c.id} className="city-card" disabled={busy} onClick={async () => { setBusy(true); try { await onPick(c.id); } finally { setBusy(false); } }}>
-              <div className="skyline" aria-hidden>
-                {[40, 64, 30, 80, 52, 70, 36, 58].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}
-              </div>
-              <div className="row between">
-                <h3 style={{ margin: 0 }}>{c.name}</h3>
-                <span className="chip">{localTime(c.tz)}</span>
-              </div>
-              <p className="small muted" style={{ marginTop: 8 }}>{blurbs[c.id] ?? c.country}</p>
-              <span className="chip green">{c.climate === 'warm' ? 'Warm climate' : 'Temperate'}</span>
-            </button>
+            <CityCard key={c.id} c={c} blurb={blurbs[c.id] ?? c.country} weather={weather?.find((w) => w.city_id === c.id)} online={stats?.find((s) => s.city_id === c.id)?.online ?? 0} disabled={busy} onPick={async () => { setBusy(true); try { await onPick(c.id); } finally { setBusy(false); } }} />
           ))}
         </div>
       </div>
@@ -306,14 +306,18 @@ export default function Play() {
     subscribeUser(me.id, (ev, payload) => {
       const g = useGame.getState();
       if (ev === 'notification') {
+        window.dispatchEvent(new CustomEvent('cc:notification', { detail: payload }));
+        if (payload?.kind !== 'badge') sound.play('notify');
         g.toast(payload.title + (payload.body ? ` — ${payload.body}` : ''), 'info');
         if (g.me) g.set({ me: { ...g.me, unread: (g.me.unread ?? 0) + 1 } });
       } else if (ev === 'sales') {
+        useIncome.getState().add(payload.revenue ?? 0);
         window.dispatchEvent(new CustomEvent('cc:sales', { detail: payload }));
         if (g.me) g.set({ me: { ...g.me, cash: g.me.cash + (payload.revenue ?? 0) } });
       } else if (ev === 'order') {
         g.bump();
       } else if (ev === 'dm') {
+        sound.play('chat');
         g.toast(`New message from ${payload.from}`, 'info');
         window.dispatchEvent(new CustomEvent('cc:dm', { detail: payload }));
       }
@@ -384,4 +388,41 @@ export default function Play() {
     );
   }
   return <World />;
+}
+
+const WEATHER_WORD = (code: number | null | undefined) =>
+  code == null ? null : code === 0 ? 'Clear' : code <= 2 ? 'Sunny spells' : code === 3 ? 'Cloudy' : code === 45 || code === 48 ? 'Foggy' : (code >= 71 && code <= 77) || code === 85 || code === 86 ? 'Snow' : code >= 95 ? 'Storms' : 'Rain';
+
+// A city to pick: a little 3D street with its landmark, local time, today's
+// weather and how many players are there now.
+function CityCard({ c, blurb, weather, online, disabled, onPick }: { c: any; blurb: string; weather?: any; online: number; disabled: boolean; onPick: () => void }) {
+  const [pic, setPic] = useState<string>('');
+  useEffect(() => {
+    let alive = true;
+    import('../world3d/dioramas')
+      .then((m) => {
+        if (alive) setPic(m.cityDiorama(c.id));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [c.id]);
+  const word = WEATHER_WORD(weather?.code);
+  return (
+    <button className="city-card" disabled={disabled} onClick={onPick}>
+      <div className="diorama" aria-hidden>
+        {pic ? <img src={pic} alt="" /> : <div className="skyline">{[40, 64, 30, 80, 52, 70, 36, 58].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div>}
+      </div>
+      <div className="row between">
+        <h3 style={{ margin: 0 }}>{c.name}</h3>
+        <span className="chip tnum">{localTime(c.tz)}</span>
+      </div>
+      <p className="small muted" style={{ margin: '6px 0 8px' }}>{blurb}</p>
+      <div className="row wrap" style={{ gap: 6 }}>
+        {word && weather?.temp_c != null && <span className="chip">{word} · {Math.round(weather.temp_c)}°</span>}
+        <span className="chip green">{online} online now</span>
+      </div>
+    </button>
+  );
 }

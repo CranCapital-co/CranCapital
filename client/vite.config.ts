@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages serves the site from /<repository name>/: the Pages workflow
-// passes it as VITE_BASE. Other builds use relative paths; local dev uses /.
+// Builds use relative paths, so the site works wherever it's served
+// (GitHub Pages puts it under /<repository name>/, which changes if the repo
+// is renamed or moved). Local dev uses /. VITE_BASE overrides both.
 export default defineConfig(({ command }) => ({
   base: process.env.VITE_BASE ?? (command === 'build' ? './' : '/'),
   plugins: [react()],
@@ -13,6 +14,7 @@ export default defineConfig(({ command }) => ({
       output: {
         manualChunks: {
           maplibre: ['maplibre-gl'],
+          three: ['three'],
           supabase: ['@supabase/supabase-js'],
         },
       },

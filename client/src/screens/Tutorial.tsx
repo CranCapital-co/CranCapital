@@ -8,8 +8,13 @@ import { supabase, rpc, BACKEND_READY } from '../lib/supabase';
 import { money } from '../lib/format';
 import { installIconFactory } from '../map/icons';
 import { LOCAL_GLYPHS } from '../map/style';
+import type { CityData } from '../lib/citydata';
+import type { WorldLayer } from '../world3d/WorldLayer';
+import { useSettings } from '../lib/settings';
+import { sound } from '../audio/sound';
 import { demandAt } from '../ui/common';
 import '../styles/tutorial.css';
+import { Icon } from '../ui/Icon';
 
 const C = { lng: -150.0, lat: 0.25 };
 const M_LAT = 1 / 110574;
@@ -72,6 +77,63 @@ function distToSeg(px: number, py: number, a: [number, number], b: [number, numb
 const onStreet = (x: number, y: number) => ROADS.some((r) => distToSeg(x, y, r[0], r[1]) < 7) || Math.hypot(x - SQUARE.x, y - SQUARE.y) < SQUARE.r;
 const toXY = (lng: number, lat: number) => ({ x: (lng - C.lng) / M_LNG, y: (lat - C.lat) / M_LAT });
 
+// The island as a city grid (walkable roads, foot traffic) so the same 3D
+// world runs here: walkers on the roads, your character, a real cart and
+// customers who walk up and pay.
+function tutorialCity(): CityData {
+  const W = 1400;
+  const H = 1200;
+  const walk = { cell: 5, w: W / 5, h: H / 5 };
+  const traffic = { cell: 50, w: W / 50, h: H / 50, scale: 50 };
+  const bits = new Uint8Array(Math.ceil((walk.w * walk.h) / 8));
+  for (let cy = 0; cy < walk.h; cy++)
+    for (let cx = 0; cx < walk.w; cx++) {
+      const x = cx * 5 + 2.5 - W / 2;
+      const y = cy * 5 + 2.5 - H / 2;
+      if (onStreet(x, y)) {
+        const i = cy * walk.w + cx;
+        bits[i >> 3] |= 1 << (i & 7);
+      }
+    }
+  const tr = new Uint8Array(traffic.w * traffic.h);
+  for (let cy = 0; cy < traffic.h; cy++)
+    for (let cx = 0; cx < traffic.w; cx++) {
+      const x = cx * 50 + 25 - W / 2;
+      const y = cy * 50 + 25 - H / 2;
+      const nearRoad = ROADS.some((r) => distToSeg(x, y, r[0], r[1]) < 60);
+      tr[cy * traffic.w + cx] = Math.round((Math.hypot(x, y) < 130 ? 2.2 : nearRoad ? 1.0 : 0.15) * traffic.scale);
+    }
+  const origin: [number, number] = [C.lng - (W / 2) * M_LNG, C.lat - (H / 2) * M_LAT];
+  return {
+    meta: {
+      id: 'island', name: 'Tutorial Island', tz: 'UTC', bbox: [origin[0], origin[1], origin[0] + W * M_LNG, origin[1] + H * M_LAT], origin, kx: 1 / M_LNG, ky: 1 / M_LAT, widthM: W, heightM: H,
+      start: { lng: C.lng, lat: C.lat, label: 'Market Square' }, travelHub: { lng: C.lng, lat: C.lat, label: 'Market Square' },
+      grids: { walk, plot: { cell: 25, w: W / 25, h: H / 25 }, traffic },
+    },
+    traffic: tr,
+    plots: new Uint8Array(0),
+    coast: new Uint8Array(0),
+    walk: bits,
+  };
+}
+
+// Pip, the cart vendor who shows you around.
+function Pip({ size = 64 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className="pip" aria-hidden>
+      <circle cx="32" cy="34" r="22" fill="#f1c7a5" />
+      <path d="M10 26c4-14 40-14 44 0z" fill="#e3694d" />
+      <path d="M10 26h44" stroke="#fff" strokeWidth="4" strokeDasharray="6 6" />
+      <rect x="40" y="22" width="18" height="5" rx="2.5" fill="#e3694d" />
+      <circle cx="25" cy="36" r="3" fill="#1e1e24" />
+      <circle cx="39" cy="36" r="3" fill="#1e1e24" />
+      <path d="M24 45q8 6 16 0" stroke="#b05a4a" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <circle cx="19" cy="42" r="3" fill="#f2a08a" opacity=".6" />
+      <circle cx="45" cy="42" r="3" fill="#f2a08a" opacity=".6" />
+    </svg>
+  );
+}
+
 const DISHES = [
   { id: 'salad', name: 'Garden Salad', icon: '🥗', fair: 4000, ing: { lettuce: 3, tomato: 2 } },
   { id: 'chips', name: 'Hot Chips', icon: '🍟', fair: 3500, ing: { potato: 3 } },
@@ -103,6 +165,7 @@ export default function Tutorial() {
   const stepRef = useRef(step);
   stepRef.current = step;
   const state = useRef({ pos: { x: -300, y: -20 }, target: null as null | { x: number; y: number }, carry: 0 });
+  const worldRef = useRef<WorldLayer | null>(null);
   const live = useRef({ menu, stock, cart });
   live.current = { menu, stock, cart };
 
@@ -138,17 +201,18 @@ export default function Tutorial() {
           { id: 'target', type: 'circle', source: 'target', paint: { 'circle-radius': 18, 'circle-color': '#f2c14b', 'circle-opacity': 0.5, 'circle-stroke-color': '#e8a93a', 'circle-stroke-width': 3 } },
           { id: 'peds', type: 'circle', source: 'peds', paint: { 'circle-radius': 3.5, 'circle-color': ['get', 'c'] } },
           { id: 'labels', type: 'symbol', source: 'labels', layout: { 'text-field': ['get', 't'], 'text-font': ['Noto Sans Bold'], 'text-size': 13 }, paint: { 'text-color': '#5a6b63', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } },
-          { id: 'cart', type: 'symbol', source: 'cart', layout: { 'icon-image': 'bz:🛒:1:1:0', 'icon-allow-overlap': true } },
+          { id: 'cart', type: 'symbol', source: 'cart', layout: { 'icon-image': 'bz:cart:1:1:0', 'icon-allow-overlap': true } },
           { id: 'me', type: 'symbol', source: 'me', layout: { 'icon-image': 'av:classic:none:standard', 'icon-allow-overlap': true, 'icon-anchor': 'bottom', 'icon-size': 1.1 } },
         ],
       } as any,
-      center: p(-120, 0),
-      zoom: 16.3,
-      pitch: 48,
+      center: p(-140, -5), // you and the market square both in view
+      zoom: 16.9,
+      pitch: 55,
       bearing: -10,
       attributionControl: false,
     });
     mapRef.current = map;
+    (window as any).__ccTutorialMap = map; // for the browser test
     installIconFactory(map);
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     const set = (id: string, d: any) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(d);
@@ -180,12 +244,47 @@ export default function Tutorial() {
             if (stepRef.current === 'walk' && Math.hypot(s.pos.x - TARGET.x, s.pos.y - TARGET.y) < 30) setStep('place');
           } else {
             s.pos = { x: s.pos.x + (dx / d) * step, y: s.pos.y + (dy / d) * step };
+            // The camera eases after you as you walk.
+            const c = map.getCenter();
+            const [lng, lat] = p(s.pos.x, s.pos.y);
+            const k = Math.min(1, dt * 2.2);
+            if (!map.isMoving()) map.jumpTo({ center: [c.lng + (lng - c.lng) * k, c.lat + (lat - c.lat) * k] });
           }
         }
         set('me', { type: 'FeatureCollection', features: [pt(s.pos.x, s.pos.y)] });
       }
     };
-    map.on('load', () => (raf = requestAnimationFrame(loop)));
+    map.on('load', async () => {
+      raf = requestAnimationFrame(loop);
+      // The 3D world: if it can't start, the flat version still works.
+      try {
+        const { WorldLayer } = await import('../world3d/WorldLayer');
+        if (!mapRef.current) return;
+        const w = new WorldLayer(tutorialCity(), () => {
+          const s = state.current;
+          const [lng, lat] = p(s.pos.x, s.pos.y);
+          return { key: 'me', lat, lng, skin: 'classic', ring: '#cfd6dc', double: false, skinTone: 1, moving: !!s.target };
+        });
+        map.addLayer(w, 'labels');
+        w.setQuality(useSettings.getState().quality);
+        w.onPaid = (_b, amount) => {
+          const ct = live.current.cart;
+          if (ct) {
+            const div = document.createElement('div');
+            div.className = 'sale-pop';
+            div.textContent = `+${money(amount)}`;
+            const marker = new maplibregl.Marker({ element: div, anchor: 'bottom', offset: [0, -40] }).setLngLat(p(ct.x, ct.y)).addTo(map);
+            setTimeout(() => marker.remove(), 2200);
+          }
+          sound.play('sale', { amount });
+        };
+        worldRef.current = w;
+        (window as any).__ccWorld = w;
+        for (const id of ['peds', 'me', 'cart']) map.setLayoutProperty(id, 'visibility', 'none');
+      } catch {
+        /* flat tutorial */
+      }
+    });
     map.on('click', (e) => {
       const { x, y } = toXY(e.lngLat.lng, e.lngLat.lat);
       if (stepRef.current === 'place') {
@@ -196,6 +295,14 @@ export default function Tutorial() {
         }
         setCart({ x, y });
         setCash((c) => c - 5_000_000);
+        const w = worldRef.current;
+        if (w) {
+          const [lng, lat] = p(x, y);
+          w.celebrateBuild(1);
+          w.setBusinesses([{ id: 1, kind: 'cart', tier: 1, level: 1, status: 'open', mine: true, lat, lng, name: 'Your cart' }]);
+          sound.play('hammer');
+          setTimeout(() => sound.play('pop'), 2000);
+        }
         set('cart', { type: 'FeatureCollection', features: [pt(x, y)] });
         set('target', { type: 'FeatureCollection', features: [] });
         setStep('menu');
@@ -254,7 +361,7 @@ export default function Tutorial() {
         rev += m.price;
         count++;
         const mk = mapRef.current;
-        if (mk) {
+        if (mk && !worldRef.current) {
           const div = document.createElement('div');
           div.className = 'sale-pop';
           div.textContent = `+${money(m.price)}`;
@@ -263,6 +370,8 @@ export default function Tutorial() {
         }
       }
       if (count) {
+        // In 3D, customers walk up and the money pops when they pay.
+        worldRef.current?.sale(1, count, rev);
         setStock(next);
         setSales((x) => ({ count: x.count + count, revenue: x.revenue + rev }));
         setCash((c) => c + rev);
@@ -297,7 +406,7 @@ export default function Tutorial() {
       <div ref={el} className="map" />
       <div className="hud">
         <div className="hud-pill">
-          <span style={{ fontSize: 22, paddingLeft: 6 }}>🏝️</span>
+          <Icon name="island" size={30} accent="var(--sky)" />
           <div>
             <div className="hud-cash">{money(cash, { cents: false })}</div>
             <div className="hud-sub">Practice money · Tutorial Island</div>
@@ -307,7 +416,11 @@ export default function Tutorial() {
         <a className="btn small ghost" href="#/play" onClick={() => { try { sessionStorage.setItem('cc_skip_tutorial', '1'); } catch { /* ignore */ } }} style={{ background: 'var(--panel)' }}>Skip</a>
       </div>
       {msg && <div className="mode-banner">{msg}</div>}
-      <div className="coach">
+      <div className="coach pip-coach">
+        <div className="pip-head">
+          <Pip size={54} />
+          <span className="small muted">Pip, cart vendor</span>
+        </div>
         {step === 'intro' && (
           <>
             <h2>Welcome to Tutorial Island</h2>
@@ -339,7 +452,7 @@ export default function Tutorial() {
               return (
                 <div key={m.id} className="row" style={{ marginBottom: 6 }}>
                   <select className="input" style={{ width: 'auto' }} value={m.id} onChange={(e) => setMenu(menu.map((x, j) => (j === i ? { id: e.target.value, price: DISHES.find((dd) => dd.id === e.target.value)!.fair } : x)))}>
-                    {DISHES.filter((dd) => dd.id === m.id || !menu.some((x) => x.id === dd.id)).map((dd) => <option key={dd.id} value={dd.id}>{dd.icon} {dd.name}</option>)}
+                    {DISHES.filter((dd) => dd.id === m.id || !menu.some((x) => x.id === dd.id)).map((dd) => <option key={dd.id} value={dd.id}>{dd.name}</option>)}
                   </select>
                   <input type="range" min={d.fair * 0.5} max={d.fair * 2} step={100} value={m.price} onChange={(e) => setMenu(menu.map((x, j) => (j === i ? { ...x, price: Number(e.target.value) } : x)))} aria-label={`${d.name} price`} />
                   <b className="num" style={{ minWidth: 56 }}>{money(m.price)}</b>
@@ -394,7 +507,7 @@ export default function Tutorial() {
         )}
         {step === 'done' && (
           <>
-            <h3>🎓 You’re ready</h3>
+            <h3 className="row"><Icon name="star" accent="var(--gold)" /> You’re ready</h3>
             <p className="small">You sold {sales.count} dishes for {money(sales.revenue)}. In real cities your cart keeps selling while you’re offline, for up to 24 hours. Then grow into shops, land, mines, factories and finance.</p>
             <button className="btn gold" onClick={finish}>Leave the island</button>
           </>

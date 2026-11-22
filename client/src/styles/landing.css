@@ -50,3 +50,9 @@
 .wiki-nav a { padding: 6px 10px; border-radius: 8px; text-decoration: none; color: var(--ink-2); font-size: 14px; }
 .wiki-nav a.on { background: var(--brand-soft); color: var(--brand); font-weight: 700; }
 @media (max-width: 760px) { .wiki-layout { grid-template-columns: 1fr; } .wiki-nav { position: static; flex-direction: row; overflow-x: auto; } .wiki-nav a { white-space: nowrap; } }
+.hero-scene { position: relative; width: 100%; aspect-ratio: 16 / 11; border-radius: 24px; overflow: hidden; }
+.hero-scene .hero-fallback { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity .8s; }
+.hero-scene .hero-map { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s; border-radius: 24px; box-shadow: 0 18px 40px rgba(20, 36, 32, .18); }
+.hero-scene.live .hero-map { opacity: 1; }
+.hero-scene.live .hero-fallback { opacity: 0; }
+.hero-scene .maplibregl-ctrl-attrib { font-size: 10px; }
