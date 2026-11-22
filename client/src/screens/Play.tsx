@@ -7,6 +7,7 @@ import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/real
 import { localTime } from '../lib/format';
 import type { Catalog, Me } from '../lib/types';
 import World from './World';
+import NationPicker, { nationLater, setNationLater } from '../nations/NationPicker';
 import { Icon } from '../ui/Icon';
 
 function Brand() {
@@ -316,6 +317,8 @@ export default function Play() {
         if (g.me) g.set({ me: { ...g.me, cash: g.me.cash + (payload.revenue ?? 0) } });
       } else if (ev === 'order') {
         g.bump();
+      } else if (ev === 'renown') {
+        window.dispatchEvent(new CustomEvent('cc:xp', { detail: payload }));
       } else if (ev === 'dm') {
         sound.play('chat');
         g.toast(`New message from ${payload.from}`, 'info');
@@ -371,6 +374,10 @@ export default function Play() {
   if (!session) return <SignIn />;
   if (needsProfile) return <Onboarding onDone={(m) => set({ me: m, needsProfile: false })} />;
   if (!me || !catalog) return <div className="boot"><div className="spinner" /></div>;
+  // First thing: the country you'll lead (first come, first served).
+  if (!me.nation && !nationLater()) {
+    return <NationPicker onDone={(m) => set({ me: m })} onLater={() => { setNationLater(); set({ me: { ...me } }); }} />;
+  }
   if (!me.city_id && !me.travel_to) {
     if (!me.tutorial_done && !skipTutorial) return <TutorialOffer onSkip={() => setSkipTutorial(true)} />;
     return (

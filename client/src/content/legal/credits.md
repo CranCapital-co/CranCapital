@@ -24,6 +24,10 @@ The tiles are built with the OpenMapTiles schema. © [OpenMapTiles](https://open
 
 Live weather for each city comes from [Open-Meteo](https://open-meteo.com/), free for non-commercial use. Weather data by Open-Meteo.com, licensed under CC BY 4.0.
 
+## World map
+
+Country shapes, populations and economies come from [Natural Earth](https://www.naturalearthdata.com/) (1:110m countries), which is in the public domain. Country names and borders in the game follow Natural Earth and are not a statement about any real dispute.
+
 ## Sun position
 
 The sun's position is worked out with SunCalc by Vladimir Agafonkin (BSD-2-Clause).
@@ -41,6 +45,7 @@ This data is derived from OpenStreetMap. It is available under the ODbL in the g
 | MapLibre GL JS | BSD-3-Clause |
 | Three.js | MIT |
 | SunCalc | BSD-2-Clause |
+| TopoJSON client | ISC |
 | React and React DOM | MIT |
 | Supabase JavaScript client | MIT |
 | Zustand | MIT |

@@ -12,6 +12,7 @@ import { Dock } from '../ui/hud/Dock';
 import { MapTools } from '../ui/hud/MapTools';
 import { Icon } from '../ui/Icon';
 import { Moments } from '../ui/Moments';
+import { RenownMoments, RenownBadge } from '../ui/RenownMoments';
 import { PhotoMode } from '../ui/PhotoMode';
 import { reducedMotion } from '../lib/settings';
 import { trafficLabel } from '../ui/common';
@@ -35,6 +36,8 @@ const ModWindow = lazy(() => import('../ui/panels/ModWindow'));
 const EmpireWindow = lazy(() => import('../ui/panels/EmpireWindow'));
 const PeopleWindow = lazy(() => import('../ui/panels/PeopleWindow'));
 const MoreWindow = lazy(() => import('../ui/panels/MoreWindow'));
+const ProgressWindow = lazy(() => import('../ui/panels/ProgressWindow'));
+const NationsScreen = lazy(() => import('../nations/NationsScreen'));
 
 const WINDOWS: Record<string, React.ComponentType<any>> = {
   business: BusinessWindow,
@@ -55,6 +58,7 @@ const WINDOWS: Record<string, React.ComponentType<any>> = {
   empire: EmpireWindow,
   people: PeopleWindow,
   more: MoreWindow,
+  progress: ProgressWindow,
 };
 
 type Pending = { kind: 'buy-cart' | 'move-cart'; lat: number; lng: number; businessId?: number } | null;
@@ -99,6 +103,20 @@ export default function World() {
   // Photo mode (from More) and the empire tour banner.
   const [photo, setPhoto] = useState(false);
   const [tour, setTour] = useState<{ name: string; business: string; i: number; n: number } | null>(null);
+  // Your nation and the world map, over the city.
+  const [nations, setNations] = useState(false);
+  useEffect(() => {
+    const on = () => {
+      useGame.getState().close();
+      setNations(true);
+    };
+    window.addEventListener('cc:nations', on);
+    return () => window.removeEventListener('cc:nations', on);
+  }, []);
+  useEffect(() => {
+    (window as any).__ccPause3d = nations;
+    if (!nations) window.dispatchEvent(new Event('resize'));
+  }, [nations]);
   useEffect(() => {
     const onPhoto = () => setPhoto(true);
     const onTour = (e: Event) => setTour((e as CustomEvent).detail);
@@ -214,6 +232,7 @@ export default function World() {
 
       <div className="hud">
         <HudMoney />
+        <RenownBadge />
         <div className="grow hud-mid">
           <CityStrip cityId={cityId} />
         </div>
@@ -322,6 +341,12 @@ export default function World() {
 
       {away && ffDone && <AwayCard away={away} onClose={() => set({ away: null })} />}
       <Moments api={api} />
+      <RenownMoments />
+      {nations && (
+        <Suspense fallback={<div className="boot"><div className="spinner" /></div>}>
+          <NationsScreen onClose={() => setNations(false)} />
+        </Suspense>
+      )}
       {photo && <PhotoMode api={api} onClose={() => setPhoto(false)} />}
       {tour && (
         <div className="mode-banner tour-banner" role="status">

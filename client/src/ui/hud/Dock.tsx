@@ -25,6 +25,10 @@ export function Dock({ glowBuild }: { glowBuild?: boolean }) {
       {item('build', 'Build', 'build', id === 'build', true)}
       {item('empire', 'Empire', 'empire', EMPIRE.includes(id))}
       {item('market', 'Market', 'market', id === 'market')}
+      <button onClick={() => window.dispatchEvent(new CustomEvent('cc:nations'))}>
+        <Icon name="globe" size={28} />
+        <span>Nation</span>
+      </button>
       {item('people', 'People', 'people', PEOPLE.includes(id))}
       {item('more', 'More', 'more', MORE.includes(id))}
     </nav>

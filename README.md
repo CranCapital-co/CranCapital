@@ -5,6 +5,12 @@ Start with one food cart on a real street in London, New York, Tokyo,
 Singapore or Paris, and grow it into shops, land, mines, factories, ports and a bank.
 Businesses keep earning while you're offline (for up to 24 hours).
 
+Every player also leads a real country in one shared world: build an army,
+research technology, make alliances, go to war and aim for world domination.
+Countries without a player are run by AI governments. A Renown level, with
+ranks, perks, crates, missions, achievements and a free monthly season,
+rewards everything you do.
+
 Made for iPad: everything is sized for fingers, and "Add to Home Screen" in
 Safari opens the game full screen. It also works in any modern browser.
 
@@ -22,9 +28,12 @@ CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permissi
 | Economy tick | `game.tick()` via pg_cron, every minute | Sales, production, rent, wages, loans, market traders, offline cap. |
 | Live updates | Supabase Realtime | Other players walking (presence), notifications, chat. |
 | City data | `tools/citydata/` → `supabase/seed/cities/`, `client/public/cities/` | Buildings, foot traffic, buildable plots and port sites, built from OpenStreetMap via OpenFreeMap tiles. |
-| Map tiles | OpenFreeMap (free, no key) | Real streets and 3D buildings. |
+| Map tiles | OpenFreeMap (free, no key), built into `client/public/tiles/` by `tools/citydata/tiles.mjs` | Real streets and 3D buildings, served with the site so they load on networks that block map servers. |
 | 3D world | `client/src/world3d/` (Three.js inside MapLibre) | People, businesses, vehicles, weather and the living city, all built in code. |
 | Weather | Open-Meteo, fetched by the server every 30 minutes | Rain, snow and cloud on the map. |
+| Nations | `game.world_tick()` via pg_cron, every minute | National economies, training, construction, armies and battles, wars and peace, AI governments, world domination. |
+| Renown | `game.renown_tick()` via pg_cron, every minute | XP from the business game, achievements. |
+| World data | `tools/world/build.mjs` → `supabase/migrations/20261122000500_world_data.sql`, `client/public/world/` | 175 countries from Natural Earth with population, GDP, land and sea links. |
 
 Rules the server keeps: the client only asks; every change to a player's cash
 goes through `game.money()` and lands in `game.ledger`; players can't reach
@@ -42,6 +51,8 @@ client/                 the game website
 supabase/migrations/    the whole game server, in order
 supabase/seed/          city data, word filter, world settings
 tools/citydata/         rebuild city data from map tiles
+tools/world/            rebuild the world map for Nations (Natural Earth)
+client/src/nations/     country picker, world map and the nation screen
 tools/local-supabase/   a local Supabase-compatible stack for testing (Linux)
 tools/deploy/           push the database to the hosted Supabase project
 tests/db/               end-to-end tests through the real API

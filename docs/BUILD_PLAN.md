@@ -53,10 +53,28 @@ ones for each server addition.
 | 5 · Moments | Coins flying to the cash counter, stacking sale labels, first sale, tier-up (confetti, camera orbit, fanfare, card), badges, level-ups, leaderboard climbs, the coming-back fast-forward; Empire dashboard; new Business and Market windows; landing 3D hero, Tutorial Island in 3D with Pip, city dioramas, arrival swoop, finger cart preview | Daily net-worth snapshot and `net_worth_history()`, `my_income()`, `city_stats()` |
 | 6 · More to do | Daily goals, contracts, city projects, shop decorations, street rivals, visiting an empire, photo mode | Goals, contracts, projects and decorations, with exploit tests |
 
-Checks: `npm run test:db` (35 tests) and `npm run test:e2e` (Tutorial Island
-in a browser: fails on any console error or if the 3D layer doesn't draw).
+Checks: `npm run test:db` (46 tests) and `npm run test:e2e` (Tutorial Island
+and a new player's first minutes with Nations and Renown, in a browser: fails
+on any console error or if the 3D layer doesn't draw).
 Real-device testing on a 9th-generation iPad is still to do: the frame-rate
 budgets were checked only in a software-rendered browser here.
 
 Assets to replace when ready: sounds (docs/SOUNDS.md) and Blender models
 (docs/MODELS.md). Everything works without them.
+
+## Phase 2 of the upgrade: Renown and Nations
+
+Design and research: docs/PROGRESSION_AND_NATIONS.md.
+
+| Part | What it added | Where |
+| --- | --- | --- |
+| Renown | XP from everything (sales are log-scaled), a fast early level curve with no cap, a rank every 5 levels, unlocks by level, perks in five branches, supply/gold/war crates with a pity counter, a daily reward that never resets plus streak shields, daily and weekly missions, 22 tiered achievements, a free 40-tier monthly season, titles; HUD badge, XP floats, level-up card, Renown window | `20261122000100_renown.sql`, `ui/RenownMoments.tsx`, `ui/panels/ProgressWindow.tsx` |
+| Country selection | 175 real countries; first come, first served (row lock + unique leader); claiming resets the country and returns land it held; 24 h new-leader protection; stepping down; inactive leaders hand back to the AI; picker on first load | `20261122000200_nations.sql`, `nations/NationPicker.tsx` |
+| National economy | Taxes from GDP, tax rate, research and infrastructure budgets, manpower from population, stability, war exhaustion, upkeep and desertion, invest business cash, leader's stipend | `20261122000200_nations.sql` |
+| Military | 8 building types with levels, 6 unit types, training queues, 21 technologies, Renown and research gates | `20261122000200_nations.sql`, `nations/NationTabs.tsx` |
+| War and diplomacy | Declarations with infamy, defensive alliances that join automatically, movement along land and sea links (air 2,500 km, missiles 3,000 km), Lanchester battles with forts, militia, air defence and sea crossings, occupation, war score, peace terms, surrender, capitulation, truces, pacts, envoys, denunciations, revolts | `20261122000300_war.sql`, `nations/NationsScreen.tsx` |
+| AI nations | Skill 1–5 and six personalities; same rules and costs as players; threat assessment, budgets, research choice, recruiting, building, deployment, attacks by estimated odds, denounce-then-declare, peace by score and exhaustion, alliances, pacts | `20261122000400_ai.sql` |
+| World domination | Power index, domination share, 50% wins the era (else the top power after 90 days), Hall of Fame, new era resets the map | `20261122000300_war.sql` |
+
+Tests: `tests/db/renown.test.mjs`, `tests/db/nations.test.mjs`, `tests/e2e/nations.test.mjs`.
+

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type GeoJSONSource, type VectorTileSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { mapStyle, LIGHT, DARK, OFM_URL, OFM_GLYPHS, LOCAL_GLYPHS, OSM_ATTRIBUTION, mapText } from './style';
+import { mapStyle, LIGHT, DARK, OSM_ATTRIBUTION, mapText } from './style';
+import { LOCAL_TILES, tileBounds } from './localTiles';
 import { installIconFactory } from './icons';
 import { Crowd, crowdLevel, nightAlpha } from './crowd';
 import { applyPalette, blendPalette, NIGHT } from './style';
@@ -91,7 +92,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     useGame.setState({ pos: startPos });
     const map = new maplibregl.Map({
       container: el.current!,
-      style: mapStyle(dark() ? DARK : LIGHT),
+      style: mapStyle(dark() ? DARK : LIGHT, tileBounds(m.bbox)),
       center: [startPos.lng, startPos.lat],
       // On foot: close in and tilted, like a model city on a table. Arriving
       // in a city starts high above it, looking straight down.
@@ -477,14 +478,13 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     });
 
     // ---------- the street map: watch it, and fall back if it can't load ----------
-    // The base map comes from OpenFreeMap. If its tiles or fonts are blocked
-    // (a VPN, an ad blocker, a school network) or very slow, MapLibre's
-    // 'load' event never fires, so nothing of ours waits for it: our layers
-    // go on as soon as the style is parsed. Then, if no street tile has
-    // arrived after a few seconds, we draw the city's streets from the game's
-    // own data (served with the site) and say what's wrong.
+    // The street tiles and fonts are served with the game itself (see
+    // localTiles.ts), so school and work networks that block map servers
+    // don't stop them. If no street tile has arrived after a few seconds
+    // anyway (offline, a very slow connection), we draw the city's streets
+    // from the game's own data and say what's wrong. MapLibre's 'load'
+    // event waits for every tile, so nothing of ours waits for it.
     let baseOk = false;
-    let localGlyphs = false;
     let fallbackAdded = false;
     let retried = false;
     const showFallback = (on: boolean) => {
@@ -512,42 +512,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         reportError('map', 'fallback streets: ' + String((err as Error)?.message ?? err));
       }
     };
-    // Fonts first: if the font server is the only thing blocked, our own copy
-    // brings back the whole map. A failed tile doesn't say whether its tiles
-    // or its fonts failed, so ask the font server directly.
-    const useLocalGlyphs = () => {
-      if (localGlyphs || !ready) return;
-      localGlyphs = true;
-      try {
-        map.setGlyphs(LOCAL_GLYPHS);
-        (map.getSource('ofm') as VectorTileSource | undefined)?.setUrl(OFM_URL); // reload tiles that failed on fonts
-      } catch {
-        /* the fallback still covers us */
-      }
-    };
-    let fontCheck: Promise<boolean> | null = null;
-    const fontsReachable = () =>
-      (fontCheck ??= (async () => {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 3000);
-        try {
-          const r = await fetch(OFM_GLYPHS.replace('{fontstack}', 'Noto Sans Regular').replace('{range}', '0-255'), { signal: ctl.signal });
-          return r.ok;
-        } catch {
-          return false;
-        } finally {
-          clearTimeout(t);
-        }
-      })());
-    const onBaseTrouble = async (why: Exclude<MapIssue, null>) => {
-      if (!(await fontsReachable())) {
-        useLocalGlyphs();
-        // Give the street tiles a moment to come back with our fonts.
-        setTimeout(() => startFallback(why), why === 'slow' ? 0 : 4000);
-      } else {
-        startFallback(why);
-      }
-    };
     map.on('sourcedata', (e: any) => {
       if (e.sourceId === 'ofm' && e.tile && !baseOk) {
         baseOk = true;
@@ -558,23 +522,23 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     map.on('error', (e: any) => {
       const err = e?.error;
       const msg = String(err?.message ?? err ?? 'unknown map error');
-      if (err?.name === 'AbortError' || /\babort/i.test(msg)) return; // we cancelled it (reloading the source)
+      if (err?.name === 'AbortError' || /\babort/i.test(msg)) return; // we cancelled it
       console.error('map:', e?.sourceId ?? '', msg);
       reportError('map', (e?.sourceId ? `[${e.sourceId}] ` : '') + msg + (err?.url ? ` (${String(err.url).slice(0, 120)})` : ''));
-      if (!e?.sourceId && !/openfreemap/i.test(msg)) return;
-      onBaseTrouble('blocked');
+      if (e?.sourceId !== 'ofm') return;
+      startFallback('blocked');
       // One more try later, in case it was a blip.
-      if (e.sourceId === 'ofm' && !retried) {
+      if (!retried) {
         retried = true;
         setTimeout(() => {
-          if (!destroyed && !baseOk) (map.getSource('ofm') as VectorTileSource | undefined)?.setUrl(OFM_URL);
+          if (!destroyed && !baseOk) (map.getSource('ofm') as VectorTileSource | undefined)?.setTiles([LOCAL_TILES]);
         }, 15_000);
       }
     });
     const baseTimer = setTimeout(() => {
       if (baseOk || destroyed) return;
       reportError('map', `no street-map tiles after ${BASE_MAP_TIMEOUT / 1000} s`);
-      onBaseTrouble('slow');
+      startFallback('slow');
     }, BASE_MAP_TIMEOUT);
 
     // Our layers go on as soon as the style is parsed, not on 'load' (which
@@ -995,8 +959,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         <div className="map-issue" role="status">
           <strong>{issue === 'slow' ? 'The street map is slow to load.' : 'The street map can’t load on this device.'}</strong>
           <span>
-            It comes from tiles.openfreemap.org. A VPN, ad blocker or school or work network may be blocking it: allow that site or switch
-            it off, then reload. Until then, play on this simple street map.
+            Check your internet connection, then reload. Until then, play on this simple street map.
           </span>
           <span className="row">
             <button className="btn small" onClick={() => location.reload()}>Reload</button>

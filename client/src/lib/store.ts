@@ -6,7 +6,7 @@ import { sound } from '../audio/sound';
 export type WindowId =
   | 'businesses' | 'business' | 'property' | 'build' | 'market' | 'bank' | 'inventory' | 'community'
   | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod'
-  | 'empire' | 'people' | 'more';
+  | 'empire' | 'people' | 'more' | 'progress';
 
 // Windows that now live as tabs inside the five dock windows.
 const TAB_HOME: Partial<Record<WindowId, [WindowId, string]>> = {
