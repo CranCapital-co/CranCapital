@@ -1,0 +1,56 @@
+/* Renown: the HUD badge, XP floats, the level-up card, the Progress window. */
+.renown-badge { position: relative; width: 60px; height: 60px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(8px); cursor: pointer; color: var(--ink); padding: 0; transition: transform .15s cubic-bezier(.3,1.6,.5,1); }
+.renown-badge:active { transform: scale(.94); }
+.renown-badge svg { position: absolute; inset: 3px; }
+.renown-level { font-size: 19px; font-weight: 800; line-height: 1; margin-top: -6px; font-variant-numeric: tabular-nums; }
+.renown-xp { position: absolute; bottom: 12px; font-size: 9px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.renown-badge .dot { position: absolute; top: -2px; right: -2px; width: 20px; height: 20px; border-radius: 50%; background: var(--coral); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; animation: dot-pulse 1.8s ease-in-out infinite; }
+.renown-badge .boost { position: absolute; bottom: -4px; right: -4px; background: var(--panel-solid); border-radius: 50%; padding: 2px; box-shadow: var(--shadow); }
+@keyframes dot-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+.xp-floats { position: fixed; z-index: 57; top: calc(env(safe-area-inset-top) + 80px); left: 50%; transform: translateX(-50%); pointer-events: none; display: grid; justify-items: center; gap: 4px; }
+.xp-float { font-weight: 800; font-size: 15px; color: #2b1d02; background: var(--gold); padding: 4px 12px; border-radius: 999px; box-shadow: var(--shadow); animation: xp-up 1.6s ease-out forwards; }
+@keyframes xp-up { 0% { transform: translateY(14px) scale(.8); opacity: 0; } 15% { transform: translateY(0) scale(1.08); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-28px) scale(1); opacity: 0; } }
+
+.level-burst { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #ffe7a6, var(--gold) 55%, #b7791f); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 25%, transparent), 0 12px 30px rgba(0,0,0,.25); color: #2b1d02; animation: level-spin .9s cubic-bezier(.2,1.4,.4,1) both; }
+.level-burst b { font-size: 40px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.level-burst.small { width: 64px; height: 64px; animation: none; }
+.level-burst.small b { font-size: 26px; }
+.level-card.rank-up .level-burst { background: radial-gradient(circle at 35% 30%, #fff3c9, #f2bd5a 45%, #a86512); width: 112px; height: 112px; }
+@keyframes level-spin { from { transform: rotate(-200deg) scale(.3); opacity: 0; } }
+.unlock-list { display: grid; gap: 8px; width: 100%; text-align: left; }
+.unlock-row { display: flex; gap: 10px; align-items: center; background: var(--gold-soft); border-radius: 12px; padding: 8px 10px; }
+.unlock-row span { display: flex; flex-direction: column; }
+
+.xp-bar { position: relative; height: 20px; border-radius: 10px; background: var(--bg-2); overflow: hidden; }
+.xp-bar > div { position: absolute; inset: 0 auto 0 0; border-radius: 10px; background: linear-gradient(90deg, #f2bd5a, var(--gold)); transition: width .6s cubic-bezier(.2,.9,.3,1.2); }
+.xp-bar > span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.daily-track { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.daily-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; background: var(--bg-2); text-align: center; min-width: 0; }
+.daily-day.got { opacity: .55; }
+.daily-day.today { background: var(--gold-soft); box-shadow: inset 0 0 0 2px var(--gold); opacity: 1; }
+.crate-btn { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-solid); color: var(--ink); cursor: pointer; text-align: left; }
+.crate-btn span { display: flex; flex-direction: column; text-transform: capitalize; }
+.crate-btn.gold { border-color: var(--gold); background: var(--gold-soft); }
+.crate-open { padding: 10px 6px 4px; justify-items: center; }
+.crate-open h2 { margin: 0; }
+.crate-icon { display: grid; place-items: center; width: 120px; height: 120px; border-radius: 28px; background: var(--bg-2); }
+.crate-icon.shake { animation: crate-shake .35s ease-in-out infinite; }
+.crate-icon.open { animation: pop-card .5s cubic-bezier(.2,1.6,.4,1) both; }
+.crate-icon.rare { background: var(--gold-soft); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 40%, transparent), 0 0 40px color-mix(in srgb, var(--gold) 60%, transparent); }
+@keyframes crate-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg) scale(1.03); } 75% { transform: rotate(6deg) scale(1.03); } }
+.mission { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; background: var(--bg-2); }
+.mission.done { opacity: .6; }
+.perk .pips { display: inline-flex; gap: 4px; }
+.perk .pips i { width: 14px; height: 14px; border-radius: 4px; background: var(--bg-2); border: 1px solid var(--line-2); }
+.perk .pips i.on { background: var(--gold); border-color: var(--gold); }
+.achievement { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-solid); }
+.achievement .medal { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--bg-2); box-shadow: inset 0 0 0 3px var(--accent); }
+.season-track { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.season-tier { flex: none; width: 104px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--line); scroll-snap-align: center; text-align: center; opacity: .65; }
+.season-tier.reached { opacity: 1; background: var(--panel-solid); border-color: var(--gold); }
+.season-tier.claimed { opacity: .55; }
+.season-tier.current { box-shadow: 0 0 0 2px var(--brand-2); opacity: 1; }
+.season-tier.big { width: 130px; }
+.gold-text { color: color-mix(in srgb, var(--gold) 75%, var(--ink)); font-weight: 700; }
+.chip.on { background: var(--brand); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .xp-float, .level-burst, .crate-icon, .renown-badge .dot { animation: none !important; } }

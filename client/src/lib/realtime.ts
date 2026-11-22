@@ -102,7 +102,7 @@ export async function subscribeUser(uid: string, onEvent: (event: string, payloa
   if (user) supabase.removeChannel(user);
   await auth();
   user = supabase.channel(`user:${uid}`, { config: { private: true } });
-  for (const ev of ['notification', 'sales', 'order', 'dm']) {
+  for (const ev of ['notification', 'sales', 'order', 'dm', 'renown']) {
     user.on('broadcast', { event: ev }, (msg) => onEvent(ev, msg.payload));
   }
   user.subscribe();

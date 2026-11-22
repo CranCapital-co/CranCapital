@@ -5,6 +5,16 @@
     "summary": "Pick a city, buy a food cart and make your first sales."
   },
   {
+    "slug": "nations",
+    "title": "Nations: lead a country",
+    "summary": "Pick a country, build an army, research, make alliances, go to war and aim for world domination."
+  },
+  {
+    "slug": "renown",
+    "title": "Renown: levels, ranks and rewards",
+    "summary": "XP, levels, ranks, perks, crates, the daily reward, missions, achievements and the season."
+  },
+  {
     "slug": "food-carts",
     "title": "Food carts",
     "summary": "Where to park, what to sell and how cart upgrades work."

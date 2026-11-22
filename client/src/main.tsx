@@ -7,6 +7,7 @@ import '@fontsource/fraunces/600.css';
 import './styles/global.css';
 import './styles/app.css';
 import './styles/touch.css';
+import './styles/renown.css';
 import App from './App';
 import { installErrorReporting } from './lib/errors';
 import { installSound } from './audio/sound';

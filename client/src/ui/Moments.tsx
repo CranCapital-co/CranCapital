@@ -218,7 +218,7 @@ export function Moments({ api }: { api: React.MutableRefObject<MapApi | null> })
 }
 
 // Confetti in the tier's colour (with gold and white), drawn on a canvas.
-function burst(canvas: HTMLCanvasElement | null, color: string, n: number) {
+export function burst(canvas: HTMLCanvasElement | null, color: string, n: number) {
   if (!canvas) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = window.innerWidth * dpr;

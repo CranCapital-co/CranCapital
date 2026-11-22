@@ -461,7 +461,7 @@ export class WorldLayer implements CustomLayerInterface {
     this.renderer.render(this.scene, this.camera);
 
     // Keep animating while there's something moving on screen.
-    if (show && !document.hidden) {
+    if (show && !document.hidden && !(window as any).__ccPause3d) {
       if (q.fps < 60) setTimeout(() => this.map.triggerRepaint(), 1000 / q.fps - 4);
       else this.map.triggerRepaint();
     }

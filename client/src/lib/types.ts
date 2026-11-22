@@ -39,6 +39,18 @@ export interface Catalog {
   config: Record<string, number>;
 }
 
+export interface RenownBrief {
+  level: number;
+  xp: number;
+  rank: string;
+  into: number;
+  need: number;
+  perk_points: number;
+  crates: number;
+  daily: boolean;
+  boost_until: string | null;
+}
+
 export interface Me {
   id: string;
   player_no: number;
@@ -67,6 +79,8 @@ export interface Me {
   tutorial_done: boolean;
   prefs: Record<string, any>;
   unread: number;
+  renown?: RenownBrief | null;
+  nation?: string | null;
   next_tier: { tier: number; name: string; net_worth: number } | null;
 }
 
