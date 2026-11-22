@@ -28,7 +28,7 @@ CranCapital is based on Capital Rift by NIKS GAMES LLC, used with their permissi
 | Economy tick | `game.tick()` via pg_cron, every minute | Sales, production, rent, wages, loans, market traders, offline cap. |
 | Live updates | Supabase Realtime | Other players walking (presence), notifications, chat. |
 | City data | `tools/citydata/` → `supabase/seed/cities/`, `client/public/cities/` | Buildings, foot traffic, buildable plots and port sites, built from OpenStreetMap via OpenFreeMap tiles. |
-| Map tiles | OpenFreeMap (free, no key) | Real streets and 3D buildings. |
+| Map tiles | OpenFreeMap (free, no key), built into `client/public/tiles/` by `tools/citydata/tiles.mjs` | Real streets and 3D buildings, served with the site so they load on networks that block map servers. |
 | 3D world | `client/src/world3d/` (Three.js inside MapLibre) | People, businesses, vehicles, weather and the living city, all built in code. |
 | Weather | Open-Meteo, fetched by the server every 30 minutes | Rain, snow and cloud on the map. |
 | Nations | `game.world_tick()` via pg_cron, every minute | National economies, training, construction, armies and battles, wars and peace, AI governments, world domination. |

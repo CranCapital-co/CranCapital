@@ -1,7 +1,9 @@
 import type { StyleSpecification } from 'maplibre-gl';
+import { LOCAL_TILES, registerLocalTiles } from './localTiles';
 
 // CranCapital's own map look, drawn from OpenFreeMap's OpenStreetMap vector
-// tiles (free, no key). Buildings are tinted by game state through
+// tiles (free, no key), which the game serves itself for each city (see
+// localTiles.ts) so the map works on networks that block tile servers. Buildings are tinted by game state through
 // feature-state: status = mine | rented | owned | sale, selected = true.
 
 // The game's own city data (streets, plots, foot traffic) is OpenStreetMap
@@ -100,7 +102,8 @@ const statusColor = (p: Palette): any => [
     p.building],
 ];
 
-export function mapStyle(p: Palette = LIGHT): StyleSpecification {
+export function mapStyle(p: Palette = LIGHT, bounds?: [number, number, number, number]): StyleSpecification {
+  registerLocalTiles();
   // One zoom curve on the outside; the road class picks the size at each stop.
   const widths = (major: number, mid: number, minor: number, service: number): any => {
     const at = (k: number) => ['match', ['get', 'class'], ['motorway', 'trunk', 'primary'], major * k, ['secondary', 'tertiary'], mid * k, 'service', service * k, minor * k];
@@ -110,9 +113,9 @@ export function mapStyle(p: Palette = LIGHT): StyleSpecification {
     version: 8,
     // Soft, warm light so 3D buildings read clearly without going grey.
     light: { anchor: 'viewport', color: '#fff6e5', intensity: 0.22, position: [1.3, 210, 35] },
-    glyphs: OFM_GLYPHS,
+    glyphs: LOCAL_GLYPHS,
     sources: {
-      ofm: { type: 'vector', url: OFM_URL, attribution: ATTRIBUTION },
+      ofm: { type: 'vector', tiles: [LOCAL_TILES], minzoom: 0, maxzoom: 14, ...(bounds ? { bounds } : {}), attribution: ATTRIBUTION },
     },
     layers: [
       { id: 'background', type: 'background', paint: { 'background-color': p.land } },
