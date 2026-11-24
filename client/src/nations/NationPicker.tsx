@@ -1,7 +1,7 @@
 // Choosing the country you'll lead: first come, first served.
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { rpc } from '../lib/supabase';
-import { useGame } from '../lib/store';
+import { useGame, cityOf } from '../lib/store';
 import { money, num } from '../lib/format';
 import { sound } from '../audio/sound';
 import { Icon } from '../ui/Icon';
@@ -104,6 +104,15 @@ export default function NationPicker({ onDone, onLater }: { onDone: (me: Me) => 
               <div className="stat"><span className="label">Tax income</span><span className="value">{money(t.income, { cents: false })}/h</span></div>
               <div className="stat"><span className="label">Recruits</span><span className="value">{num(t.manpower)}/h</span></div>
             </div>
+            {t.home && cityOf(t.home) && (
+              <div className="notice small row" style={{ gap: 8 }}>
+                <Icon name="skyline" size={20} accent="var(--brand-2)" />
+                <span>
+                  You’ll run your businesses in <b>{cityOf(t.home)!.name}</b>
+                  {cityOf(t.home)!.country === t.name ? `, ${t.name}` : ` (${cityOf(t.home)!.country}), the nearest game city to ${t.name}`}.
+                </span>
+              </div>
+            )}
             {n && !n.leader && (
               <p className="small muted" style={{ margin: 0 }}>
                 Run now by a <b>{n.skill_name}</b> AI ({PERSONALITY[n.personality]?.split(':')[0].toLowerCase()}). Claim it and it resets for you:

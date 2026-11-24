@@ -1,0 +1,55 @@
+{
+ "id": "berlin",
+ "name": "Berlin",
+ "country": "Germany",
+ "tz": "Europe/Berlin",
+ "climate": "temperate",
+ "bbox": [
+  13.365,
+  52.505,
+  13.425,
+  52.53
+ ],
+ "start": {
+  "lng": 13.3777,
+  "lat": 52.5163,
+  "label": "Brandenburg Gate"
+ },
+ "travelHub": {
+  "lng": 13.4132,
+  "lat": 52.5219,
+  "label": "Alexanderplatz"
+ },
+ "origin": [
+  13.365,
+  52.505
+ ],
+ "kx": 67740.34450084396,
+ "ky": 110574,
+ "widthM": 4064.420670050671,
+ "heightM": 2764.349999999843,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 813,
+   "h": 553
+  },
+  "plot": {
+   "cell": 25,
+   "w": 163,
+   "h": 111
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 82,
+   "h": 56,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 569,
+  "plots": 815,
+  "coast": 52,
+  "pois": 13064
+ }
+}

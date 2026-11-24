@@ -2,7 +2,7 @@
 
 CranCapital is a shared business game played on a real map. You start small with a food cart and grow from there.
 
-Everyone plays in the same world. The streets and buildings are real places in London, New York, Tokyo and Singapore.
+Everyone plays in the same world. The streets and buildings are real places in London, New York, Tokyo, Singapore, Paris, Berlin, Toronto, Sydney, Shanghai, Moscow, Rio de Janeiro, Mexico City, Mumbai and Lagos. You start in the city of the country you lead, or the nearest one if your country has no city yet.
 
 ## Your first ten minutes
 

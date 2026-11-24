@@ -1,8 +1,9 @@
 # CranCapital
 
 A browser business-tycoon game on a real-world map that every player shares.
-Start with one food cart on a real street in London, New York, Tokyo,
-Singapore or Paris, and grow it into shops, land, mines, factories, ports and a bank.
+Start with one food cart on a real street in one of 14 cities (London, New York,
+Tokyo, Paris, Rio de Janeiro, Mumbai and more), and grow it into shops, land,
+mines, factories, ports and a bank.
 Businesses keep earning while you're offline (for up to 24 hours).
 
 Every player also leads a real country in one shared world: build an army,

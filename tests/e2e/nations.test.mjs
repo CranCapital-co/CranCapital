@@ -43,7 +43,8 @@ test('choose a country, earn Renown and run your nation', { timeout: 180_000 }, 
 
     // Into a city: the Renown badge is in the HUD, with a reward waiting.
     await page.getByRole('button', { name: /Skip, take me to a city/ }).click({ timeout: 20_000 });
-    await page.locator('.city-card').first().click({ timeout: 20_000 });
+    // Straight to the country's own city (or the nearest one).
+    await page.getByRole('button', { name: /^Start in / }).click({ timeout: 20_000 });
     await page.locator('.renown-badge').waitFor({ timeout: 30_000 });
     await page.locator('.renown-badge .dot').waitFor({ timeout: 10_000 });
     await page.locator('.renown-badge').click();

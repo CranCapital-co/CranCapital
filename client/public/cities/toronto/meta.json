@@ -1,0 +1,55 @@
+{
+ "id": "toronto",
+ "name": "Toronto",
+ "country": "Canada",
+ "tz": "America/Toronto",
+ "climate": "temperate",
+ "bbox": [
+  -79.405,
+  43.638,
+  -79.36,
+  43.665
+ ],
+ "start": {
+  "lng": -79.3806,
+  "lat": 43.6561,
+  "label": "Yonge–Dundas Square"
+ },
+ "travelHub": {
+  "lng": -79.3807,
+  "lat": 43.6453,
+  "label": "Union Station"
+ },
+ "origin": [
+  -79.405,
+  43.638
+ ],
+ "kx": 80545.77615741131,
+ "ky": 110574,
+ "widthM": 3624.5599270836465,
+ "heightM": 2985.4980000001133,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 725,
+   "h": 598
+  },
+  "plot": {
+   "cell": 25,
+   "w": 145,
+   "h": 120
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 73,
+   "h": 60,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 802,
+  "plots": 436,
+  "coast": 21,
+  "pois": 9898
+ }
+}

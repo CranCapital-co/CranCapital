@@ -211,6 +211,15 @@ function CityPicker({ catalog, onPick }: { catalog: Catalog; onPick: (city: stri
     tokyo: 'Start at Tokyo Station. Dense streets, big appetite for raw materials.',
     singapore: 'Start at Raffles Place. The only warm city: bananas and coffee grow here.',
     paris: 'Start at the Louvre. Tourists all day, and the Seine for ports. Bakers pay well for flour.',
+    rio: 'Start in Cinelândia, in the old centre. Warm all year, so bananas and coffee grow here; the bay for ports.',
+    'mexico-city': 'Start on the Zócalo, one of the world’s biggest squares. Busy streets and low wages.',
+    toronto: 'Start at Yonge–Dundas Square. Crowds downtown and Lake Ontario for ports.',
+    berlin: 'Start at the Brandenburg Gate. Busy Mitte streets and the Spree for ports.',
+    moscow: 'Start on Red Square. Packed streets in the centre and plenty of buildings.',
+    mumbai: 'Start at Flora Fountain. Warm all year, lots of land to build on and the sea all round.',
+    shanghai: 'Start at People’s Square. Huge crowds, land to build on and the Huangpu for ports.',
+    sydney: 'Start at Martin Place, minutes from the harbour. Ferries and ports on Circular Quay.',
+    lagos: 'Start at Tafawa Balewa Square. Warm all year, cheap wages and lagoons for ports.',
   };
   return (
     <div className="center-screen">
@@ -380,6 +389,8 @@ export default function Play() {
   }
   if (!me.city_id && !me.travel_to) {
     if (!me.tutorial_done && !skipTutorial) return <TutorialOffer onSkip={() => setSkipTutorial(true)} />;
+    // Leaders do business in their country's city (or the nearest one).
+    if (me.nation) return <HomeCity catalog={catalog} onDone={(m) => set({ me: m, pos: m.lat ? { lat: m.lat, lng: m.lng! } : null })} />;
     return (
       <CityPicker
         catalog={catalog}
@@ -395,6 +406,61 @@ export default function Play() {
     );
   }
   return <World />;
+}
+
+// Your country's city: where your businesses start.
+function HomeCity({ catalog, onDone }: { catalog: Catalog; onDone: (me: Me) => void }) {
+  const me = useGame((s) => s.me)!;
+  const [home, setHome] = useState<{ city: string; country: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    import('../nations/api')
+      .then((m) => m.loadWorldMap())
+      .then((map) => {
+        const t = map.territories.find((x) => x.id === me.nation);
+        if (t?.home) setHome({ city: t.home, country: t.name });
+      })
+      .catch((e) => setErr(e.message));
+  }, [me.nation]);
+  const c = home ? catalog.cities.find((x) => x.id === home.city) : null;
+  return (
+    <div className="center-screen">
+      <div className="auth-card stack center" style={{ width: 'min(520px, 100%)' }}>
+        <Brand />
+        {!c ? (
+          err ? <div className="notice red">{err}</div> : <div className="spinner" />
+        ) : (
+          <>
+            <h1 style={{ fontSize: 28, margin: 0 }}>Your business starts in {c.name}</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              {c.country === home!.country
+                ? `You lead ${home!.country}, so your first cart goes on the streets of ${c.name}.`
+                : `${home!.country} doesn’t have a game city yet, so you start in ${c.name}, the nearest one. You can fly to any city later.`}
+            </p>
+            {err && <div className="notice red">{err}</div>}
+            <button
+              className="btn gold block big"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setErr(null);
+                try {
+                  onDone(await rpc<Me>('choose_home_city'));
+                } catch (e: any) {
+                  setErr(e.message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Start in {c.name}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const WEATHER_WORD = (code: number | null | undefined) =>

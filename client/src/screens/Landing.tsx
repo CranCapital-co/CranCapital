@@ -17,7 +17,7 @@ const TIERS = [
 ];
 
 const PILLARS = [
-  ['Your real world', 'Every street comes from real map data: London, New York, Tokyo, Singapore and Paris.'],
+  ['Your real world', 'Every street comes from real map data, in 14 cities from London and New York to Rio, Mumbai and Sydney.'],
   ['Small start, huge ceiling', 'A cart with one menu grows into land, mines, factories, shipping and trading.'],
   ['One economy for everyone', 'All goods trade on one shared exchange. Other players are your customers, suppliers and rivals.'],
   ['It keeps running', 'Businesses sell while you’re away. Coming back to see what you earned is half the fun.'],

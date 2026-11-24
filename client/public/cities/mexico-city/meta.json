@@ -1,0 +1,55 @@
+{
+ "id": "mexico-city",
+ "name": "Mexico City",
+ "country": "Mexico",
+ "tz": "America/Mexico_City",
+ "climate": "temperate",
+ "bbox": [
+  -99.17,
+  19.42,
+  -99.125,
+  19.445
+ ],
+ "start": {
+  "lng": -99.1332,
+  "lat": 19.4326,
+  "label": "Zócalo"
+ },
+ "travelHub": {
+  "lng": -99.1412,
+  "lat": 19.4352,
+  "label": "Bellas Artes"
+ },
+ "origin": [
+  -99.17,
+  19.42
+ ],
+ "kx": 104978.55532073596,
+ "ky": 110574,
+ "widthM": 4724.034989433298,
+ "heightM": 2764.349999999843,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 945,
+   "h": 553
+  },
+  "plot": {
+   "cell": 25,
+   "w": 189,
+   "h": 111
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 95,
+   "h": 56,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 259,
+  "plots": 478,
+  "coast": 9,
+  "pois": 6364
+ }
+}

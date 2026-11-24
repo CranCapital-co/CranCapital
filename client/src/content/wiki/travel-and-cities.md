@@ -1,6 +1,6 @@
 # Travel and cities
 
-CranCapital has four cities at launch: London, New York, Tokyo and Singapore. Each uses real streets and buildings.
+CranCapital has 14 cities: London, New York, Tokyo, Singapore, Paris, Berlin, Toronto, Sydney, Shanghai, Moscow, Rio de Janeiro, Mexico City, Mumbai and Lagos. Each uses real streets and buildings. You start in the city of the country you lead (or the nearest one), and can fly to the others.
 
 ## The four cities
 
@@ -15,7 +15,7 @@ The price level raises rents, plot prices and apartment income in that city. Fai
 
 So an expensive city costs more to work in, but its property also earns more.
 
-Bananas and coffee beans grow only in a warm climate. At launch that means Singapore.
+Bananas and coffee beans grow only in a warm climate: Singapore, Rio de Janeiro, Mumbai and Lagos.
 
 ## Local time
 
