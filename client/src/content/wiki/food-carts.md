@@ -16,13 +16,13 @@ A cart sells street food. A level 1 cart has 3 menu slots. Each sale uses ingred
 
 | Dish | Ingredients per sale | Fair price | Ingredient cost at base prices |
 | --- | --- | --- | --- |
-| Garden Salad | 3 lettuce, 2 tomato | $4.00 | $0.48 |
-| Veggie Wrap | 1 flour, 2 lettuce, 1 tomato | $5.00 | $0.48 |
-| Hot Chips | 3 potato | $3.50 | $0.21 |
-| Banana Smoothie | 3 banana | $4.50 | $0.45 |
-| Pumpkin Soup | 2 pumpkin | $4.50 | $0.66 |
-| Onigiri | 2 rice, 1 wasabi | $3.00 | $0.24 |
-| Coffee to Go | 1 coffee beans | $3.00 | $0.40 |
+| Garden Salad | 3 lettuce, 2 tomato | $12.00 | $0.48 |
+| Veggie Wrap | 1 flour, 2 lettuce, 1 tomato | $15.00 | $0.48 |
+| Hot Chips | 3 potato | $10.50 | $0.21 |
+| Banana Smoothie | 3 banana | $13.50 | $0.45 |
+| Pumpkin Soup | 2 pumpkin | $13.50 | $0.66 |
+| Onigiri | 2 rice, 1 wasabi | $9.00 | $0.24 |
+| Coffee to Go | 1 coffee beans | $9.00 | $0.40 |
 
 Market traders sell about 10% above the base price, so expect to pay a little more.
 
@@ -42,9 +42,9 @@ If you can't cover the running costs, the cart closes. Add money and reopen it.
 
 | Level | Menu slots | Customers served per hour | Upgrade cost |
 | --- | --- | --- | --- |
-| 1 | 3 | up to 40 | (bought for $5,000) |
-| 2 | 4 | up to 70 | $7,500 |
-| 3 | 6 | up to 110 | $15,000 |
+| 1 | 3 | up to 120 | (bought for $5,000) |
+| 2 | 4 | up to 200 | $7,500 |
+| 3 | 6 | up to 300 | $15,000 |
 
 Each level also makes the cart a little more attractive to customers. Running costs rise by half the base rate per level.
 

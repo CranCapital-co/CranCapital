@@ -53,6 +53,48 @@ function landmark(city: string): THREE.BufferGeometry {
         box(4, 0.9, 4, '#7a6250', { at: [0, 22.5, 0] }),
         cone(1.4, 12, '#8a6f58', { at: [0, 23.4, 0] }, 4),
       ]);
+    case 'rio': // a statue with open arms on a green hill
+      return group([
+        cone(12, 16, '#4f8a43', { at: [0, 0, 0] }, 7),
+        box(1.6, 8, 1.6, '#e8e4dc', { at: [0, 15.5, 0] }),
+        box(9, 1.2, 1.2, '#e8e4dc', { at: [0, 21, 0] }),
+        box(1.4, 1.4, 1.4, '#e8e4dc', { at: [0, 23.5, 0] }),
+      ]);
+    case 'mexico-city': // a tall column with a golden angel
+      return group([box(7, 3, 7, '#d8d0c0'), cyl(1.3, 1.6, 26, '#e2dccd', { at: [0, 3, 0] }, 12), cone(1.6, 4, '#d9a62b', { at: [0, 29, 0] }, 6)]);
+    case 'toronto': // a needle tower with a pod
+      return group([cyl(1.2, 2.6, 34, '#cfd3d6', { at: [0, 0, 0] }, 10), cyl(3.4, 3.4, 3, '#b9c0c6', { at: [0, 26, 0] }, 16), cyl(0.35, 0.35, 10, '#cfd3d6', { at: [0, 34, 0] }, 6)]);
+    case 'berlin': // a columned gate with a chariot on top
+      return group([
+        ...[-6, -3.6, -1.2, 1.2, 3.6, 6].map((x) => box(1, 12, 1.6, '#e2d6b8', { at: [x, 0, 0] })),
+        box(14.5, 2.4, 2.6, '#d8cba9', { at: [0, 12, 0] }),
+        box(3, 2.2, 1.6, '#4f7a62', { at: [0, 14.4, 0] }),
+      ]);
+    case 'moscow': // onion domes
+      return group([
+        box(10, 10, 10, '#c0473a'),
+        ...[[-3, -3], [3, -3], [-3, 3], [3, 3], [0, 0]].flatMap(([x, z], i) => [
+          cyl(1.6, 1.6, i === 4 ? 10 : 6, i % 2 ? '#e8d9a8' : '#d9e2e8', { at: [x, 10, z] }, 10),
+          cone(2.2, 4.5, ['#2f8f6e', '#e3502d', '#2f78b7', '#e8a93a', '#c9a227'][i], { at: [x, i === 4 ? 20 : 16, z] }, 10),
+        ]),
+      ]);
+    case 'mumbai': // a grand arch by the water
+      return group([box(4, 16, 6, '#d9b98a', { at: [-6, 0, 0] }), box(4, 16, 6, '#d9b98a', { at: [6, 0, 0] }), box(16, 5, 6, '#d2b07e', { at: [0, 12, 0] }), cone(1.6, 3, '#c79a5e', { at: [-6, 17, 0] }, 8), cone(1.6, 3, '#c79a5e', { at: [6, 17, 0] }, 8)]);
+    case 'shanghai': // a tower of pink spheres on legs
+      return group([
+        ...[-2.4, 2.4].map((x) => cyl(0.7, 0.7, 12, '#c9ccd0', { at: [x, 0, 0], rot: [0, 0, -x * 0.04] }, 8)),
+        cyl(4, 4, 6, '#d65a8a', { at: [0, 8, 0] }, 16),
+        cyl(0.8, 0.8, 16, '#c9ccd0', { at: [0, 14, 0] }, 8),
+        cyl(2.4, 2.4, 3.6, '#d65a8a', { at: [0, 26, 0] }, 16),
+        cone(0.5, 8, '#c9ccd0', { at: [0, 29.6, 0] }, 6),
+      ]);
+    case 'sydney': // white sails by the harbour
+      return group([
+        box(18, 2, 10, '#d9cdb4'),
+        ...[[-5, 9], [0, 12], [5, 9]].map(([x, h]) => cone(4, h, '#fbfaf6', { at: [x, 2, 0], rot: [0, 0, -0.25] }, 3)),
+      ]);
+    case 'lagos': // a tall office tower by the lagoon
+      return group([box(8, 28, 8, '#9fb8c4'), box(8.2, 1, 8.2, '#e8e4dc', { at: [0, 28, 0] }), cyl(0.3, 0.3, 6, '#c0c6cc', { at: [0, 29, 0] }, 6)]);
     default:
       return box(6, 20, 6, '#c9c3b6');
   }
@@ -64,7 +106,10 @@ function vehicle(city: string) {
   return group([rbox(2.0, 1.2, 4.4, c, { at: [0, 0.4, 0] }, 0.4), rbox(1.8, 0.9, 2.4, shade(c, 0.15), { at: [0, 1.6, -0.2] }, 0.35)]);
 }
 
-const LAND: Record<string, string> = { london: '#e9e1cf', 'new-york': '#e4ded2', tokyo: '#ece6dc', singapore: '#e2ead8', paris: '#ece2d0' };
+const LAND: Record<string, string> = {
+  london: '#e9e1cf', 'new-york': '#e4ded2', tokyo: '#ece6dc', singapore: '#e2ead8', paris: '#ece2d0', rio: '#e6e3cf', 'mexico-city': '#ebe1cf',
+  toronto: '#e6e2d8', berlin: '#e8e2d4', moscow: '#ebe4d6', mumbai: '#ece2cc', shanghai: '#e8e4da', sydney: '#e6e6d6', lagos: '#e9e2cc',
+};
 
 export function cityDiorama(city: string): string {
   const hit = cache.get(city);

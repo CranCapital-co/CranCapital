@@ -7,7 +7,7 @@ import { useGame } from '../lib/store';
 export interface Territory {
   id: string; name: string; iso2: string | null; continent: string; region: string;
   pop_m: number; gdp_bn: number; lat: number; lng: number; landlocked: boolean; color: string;
-  value: number; income: number; manpower: number; militia: number;
+  value: number; income: number; manpower: number; militia: number; home: string | null;
 }
 export interface UnitType {
   id: string; name: string; plural: string; icon: string; atk: number; def: number; cost: number; manpower: number;

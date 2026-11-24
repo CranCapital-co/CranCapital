@@ -1,0 +1,55 @@
+{
+ "id": "shanghai",
+ "name": "Shanghai",
+ "country": "China",
+ "tz": "Asia/Shanghai",
+ "climate": "temperate",
+ "bbox": [
+  121.455,
+  31.22,
+  121.5,
+  31.245
+ ],
+ "start": {
+  "lng": 121.4737,
+  "lat": 31.2304,
+  "label": "People’s Square"
+ },
+ "travelHub": {
+  "lng": 121.48,
+  "lat": 31.235,
+  "label": "Nanjing Road"
+ },
+ "origin": [
+  121.455,
+  31.22
+ ],
+ "kx": 95186.42368854195,
+ "ky": 110574,
+ "widthM": 4283.38906598455,
+ "heightM": 2764.350000000236,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 857,
+   "h": 553
+  },
+  "plot": {
+   "cell": 25,
+   "w": 172,
+   "h": 111
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 86,
+   "h": 56,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 144,
+  "plots": 2115,
+  "coast": 79,
+  "pois": 2428
+ }
+}

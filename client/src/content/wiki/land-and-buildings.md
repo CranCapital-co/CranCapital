@@ -46,7 +46,7 @@ A farm grows one crop and puts it straight into your storage. You can change the
 | Pumpkins | 550 | $0.33 | $181.50 |
 | Coffee beans | 450 | $0.40 | $180 |
 
-Bananas and coffee beans grow only in warm cities. Singapore is the only warm city at launch.
+Bananas and coffee beans grow only in warm cities. The warm cities are Singapore, Rio de Janeiro, Mumbai and Lagos.
 
 Every crop earns about the same at base prices. Grow what your own shops use, or whatever is trading above its base price.
 

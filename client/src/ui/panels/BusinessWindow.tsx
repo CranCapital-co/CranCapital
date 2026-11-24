@@ -676,7 +676,7 @@ function ManageTab({ b, t, onSaved }: { b: Business; t: any; onSaved: () => void
         <div className="card stack">
           <strong>Upgrade to level {b.level + 1}</strong>
           <p className="small muted">
-            {t.placement === 'street' && `Serve ${[40, 70, 110][b.level] ?? 110} customers an hour (now ${[40, 70, 110][b.level - 1]}) and sell ${[3, 4, 6][b.level] ?? 6} dishes.`}
+            {t.placement === 'street' && `Serve ${[120, 200, 300][b.level] ?? 300} customers an hour (now ${[120, 200, 300][b.level - 1]}) and sell ${[3, 4, 6][b.level] ?? 6} dishes.`}
             {t.placement === 'room' && 'Serve 10% more customers, look more appealing, and add a menu slot.'}
             {t.placement !== 'street' && t.placement !== 'room' && 'Produce 80% more of the base rate (more crew and running costs too).'}
           </p>

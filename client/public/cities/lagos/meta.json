@@ -1,0 +1,55 @@
+{
+ "id": "lagos",
+ "name": "Lagos",
+ "country": "Nigeria",
+ "tz": "Africa/Lagos",
+ "climate": "warm",
+ "bbox": [
+  3.375,
+  6.44,
+  3.42,
+  6.465
+ ],
+ "start": {
+  "lng": 3.3973,
+  "lat": 6.4472,
+  "label": "Tafawa Balewa Square"
+ },
+ "travelHub": {
+  "lng": 3.389,
+  "lat": 6.4515,
+  "label": "CMS"
+ },
+ "origin": [
+  3.375,
+  6.44
+ ],
+ "kx": 110614.82823660414,
+ "ky": 110574,
+ "widthM": 4977.667270647178,
+ "heightM": 2764.3499999999412,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 996,
+   "h": 553
+  },
+  "plot": {
+   "cell": 25,
+   "w": 200,
+   "h": 111
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 100,
+   "h": 56,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 68,
+  "plots": 3774,
+  "coast": 507,
+  "pois": 422
+ }
+}

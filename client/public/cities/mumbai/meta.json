@@ -1,0 +1,55 @@
+{
+ "id": "mumbai",
+ "name": "Mumbai",
+ "country": "India",
+ "tz": "Asia/Kolkata",
+ "climate": "warm",
+ "bbox": [
+  72.815,
+  18.915,
+  72.845,
+  18.96
+ ],
+ "start": {
+  "lng": 72.8321,
+  "lat": 18.9322,
+  "label": "Flora Fountain"
+ },
+ "travelHub": {
+  "lng": 72.8355,
+  "lat": 18.9401,
+  "label": "Chhatrapati Shivaji Terminus"
+ },
+ "origin": [
+  72.815,
+  18.915
+ ],
+ "kx": 105294.59936432715,
+ "ky": 110574,
+ "widthM": 3158.837980929934,
+ "heightM": 4975.830000000188,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 632,
+   "h": 996
+  },
+  "plot": {
+   "cell": 25,
+   "w": 127,
+   "h": 200
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 64,
+   "h": 100,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 72,
+  "plots": 2378,
+  "coast": 184,
+  "pois": 2104
+ }
+}

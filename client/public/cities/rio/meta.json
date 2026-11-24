@@ -1,0 +1,55 @@
+{
+ "id": "rio",
+ "name": "Rio de Janeiro",
+ "country": "Brazil",
+ "tz": "America/Sao_Paulo",
+ "climate": "warm",
+ "bbox": [
+  -43.2,
+  -22.925,
+  -43.165,
+  -22.895
+ ],
+ "start": {
+  "lng": -43.176,
+  "lat": -22.9105,
+  "label": "Cinelândia"
+ },
+ "travelHub": {
+  "lng": -43.1912,
+  "lat": -22.9035,
+  "label": "Central do Brasil"
+ },
+ "origin": [
+  -43.2,
+  -22.925
+ ],
+ "kx": 102538.79749448046,
+ "ky": 110574,
+ "widthM": 3588.857912307195,
+ "heightM": 3317.2200000001258,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 718,
+   "h": 664
+  },
+  "plot": {
+   "cell": 25,
+   "w": 144,
+   "h": 133
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 72,
+   "h": 67,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 341,
+  "plots": 814,
+  "coast": 52,
+  "pois": 3778
+ }
+}

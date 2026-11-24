@@ -1,0 +1,55 @@
+{
+ "id": "sydney",
+ "name": "Sydney",
+ "country": "Australia",
+ "tz": "Australia/Sydney",
+ "climate": "temperate",
+ "bbox": [
+  151.195,
+  -33.885,
+  151.225,
+  -33.858
+ ],
+ "start": {
+  "lng": 151.2093,
+  "lat": -33.8678,
+  "label": "Martin Place"
+ },
+ "travelHub": {
+  "lng": 151.2066,
+  "lat": -33.8732,
+  "label": "Town Hall"
+ },
+ "origin": [
+  151.195,
+  -33.885
+ ],
+ "kx": 92427.83997788736,
+ "ky": 110574,
+ "widthM": 2772.835199336726,
+ "heightM": 2985.4980000001133,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 555,
+   "h": 598
+  },
+  "plot": {
+   "cell": 25,
+   "w": 111,
+   "h": 120
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 56,
+   "h": 60,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 297,
+  "plots": 498,
+  "coast": 49,
+  "pois": 7708
+ }
+}

@@ -1,0 +1,55 @@
+{
+ "id": "moscow",
+ "name": "Moscow",
+ "country": "Russia",
+ "tz": "Europe/Moscow",
+ "climate": "temperate",
+ "bbox": [
+  37.59,
+  55.74,
+  37.655,
+  55.765
+ ],
+ "start": {
+  "lng": 37.6208,
+  "lat": 55.7539,
+  "label": "Red Square"
+ },
+ "travelHub": {
+  "lng": 37.627,
+  "lat": 55.76,
+  "label": "Lubyanka"
+ },
+ "origin": [
+  37.59,
+  55.74
+ ],
+ "kx": 62647.429537236196,
+ "ky": 110574,
+ "widthM": 4072.0829199202103,
+ "heightM": 2764.349999999843,
+ "grids": {
+  "walk": {
+   "cell": 5,
+   "w": 815,
+   "h": 553
+  },
+  "plot": {
+   "cell": 25,
+   "w": 163,
+   "h": 111
+  },
+  "traffic": {
+   "cell": 50,
+   "w": 82,
+   "h": 56,
+   "scale": 80
+  }
+ },
+ "counts": {
+  "buildings": 1432,
+  "plots": 52,
+  "coast": 2,
+  "pois": 11118
+ }
+}
