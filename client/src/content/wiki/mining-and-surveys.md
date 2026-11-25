@@ -4,7 +4,7 @@ Tier 4 unlocks at $750,000 net worth. Raw materials lie under the cities, and yo
 
 ## Surveys
 
-A survey costs $20,000. It covers the 200 metre block your avatar stands in.
+A survey costs $20,000. Pick **Survey** in the map tools, then tap the area you want: it covers that 200 metre block.
 
 The results appear on your map, and only on yours. Other players can't see what you found.
 

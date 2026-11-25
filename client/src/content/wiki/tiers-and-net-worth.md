@@ -81,7 +81,7 @@ Carts go up to level 3. Everything else goes up to level 5.
 
 ## Your net-worth ring
 
-A ring around your avatar shows your net worth to others. It moves from bronze to silver, gold and diamond.
+A ring around your picture shows your net worth to others. It moves from bronze to silver, gold and diamond.
 
 ## Leaderboards
 

@@ -183,7 +183,7 @@ function TutorialOffer({ onSkip }: { onSkip: () => void }) {
       <div className="auth-card stack center">
         <Icon name="island" size={56} accent="var(--sky)" />
         <h1 style={{ fontSize: 28 }}>Visit Tutorial Island?</h1>
-        <p className="muted">A small practice town where you’ll walk, park a cart, set a menu and sell to passing crowds. It takes about three minutes and earns you the Graduate badge and skin.</p>
+        <p className="muted">A small practice town where you’ll park a cart, set a menu and sell to passing crowds. It takes about three minutes and earns you the Graduate badge and skin.</p>
         <a className="btn gold block" href="#/tutorial">Go to Tutorial Island</a>
         <button className="btn ghost block" onClick={onSkip}>Skip, take me to a city</button>
       </div>

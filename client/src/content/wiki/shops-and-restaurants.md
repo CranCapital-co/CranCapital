@@ -16,7 +16,7 @@ Furniture and electronics stores see few customers, but each sale is large.
 
 ## Renting a room
 
-Walk up to a building with a free room and rent it. You pay the licence and the first day's rent up front.
+Tap a building with a free room and rent it. You pay the licence and the first day's rent up front.
 
 After that, rent is taken a little at a time through the day.
 

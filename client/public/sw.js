@@ -25,7 +25,9 @@ async function cacheFirst(cacheName, req) {
   const hit = await cache.match(req);
   if (hit) return hit;
   const res = await fetch(req);
-  if (res.ok && res.status === 200) cache.put(req, res.clone());
+  // Never keep a web page in place of a file (a school filter's block page).
+  const html = (res.headers.get('content-type') || '').includes('text/html');
+  if (res.ok && res.status === 200 && !html) cache.put(req, res.clone());
   return res;
 }
 

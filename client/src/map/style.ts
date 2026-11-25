@@ -18,11 +18,10 @@ export const OFM_URL = 'https://tiles.openfreemap.org/planet';
 export const OFM_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 
 // Our own copy of the label fonts (Noto Sans: Latin, Greek, Cyrillic,
-// punctuation and symbols), served with the site. Used by Tutorial Island and
-// whenever the map's font server can't be reached. Absolute, because MapLibre
-// fetches glyphs from a worker; the {placeholders} are added after new URL(),
-// which would encode them.
-export const LOCAL_GLYPHS = new URL(import.meta.env.BASE_URL, location.href).href + 'glyphs/{fontstack}/{range}.pbf';
+// punctuation and symbols), served with the site through our own protocol,
+// so a missing range is an empty font rather than an error.
+registerLocalTiles();
+export const LOCAL_GLYPHS = 'ccglyph://{fontstack}/{range}';
 
 // Text drawn on the map must use characters the label fonts have, or MapLibre
 // drops the whole tile it's in. Keep what our own font files cover, plus

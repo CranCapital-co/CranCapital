@@ -1,0 +1,166 @@
+// Before launch, press everything: a new player on an iPad leads a country,
+// parks a cart by tapping a street (no walking), opens every window and
+// every tab, switches city, then builds a fort and a minefield and recruits
+// troops from their own cash. Fails on any console error.
+//
+// Needs the local stack (tools/local-supabase/start.sh) and the dev server:
+//   BASE=http://localhost:5173/ npm run test:e2e
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { db, q, one, streetNear } from '../db/helpers.mjs';
+
+const require = createRequire(import.meta.url);
+const { chromium, devices } = require('playwright');
+const BASE = process.env.BASE || 'http://localhost:5173/';
+
+after(async () => { await db.end(); });
+
+test('press everything', { timeout: 300_000 }, async () => {
+  const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  try {
+    const ctx = await browser.newContext({ ...devices['iPad Pro 11 landscape'] });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + (e.stack ?? '').split('\n').slice(0, 6).join('\n')));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text());
+    });
+    // Celebrations (first sale, level up) pop up over the game: tap them away, like a player.
+    await page.addLocatorHandler(page.locator('.moment-back').first(), async (m) => {
+      await m.click({ position: { x: 8, y: 8 }, force: true });
+    }, { noWaitAfter: true }); // level-ups come one after another
+    const shot = async (name) => process.env.SHOTS && page.screenshot({ path: `${process.env.SHOTS}/${name}.png` });
+
+    // Sign up and lead a country with a game city.
+    await q(`update game.nations set leader_id = null, leader_since = null where id = 'gbr'`);
+    await page.goto(BASE + '#/play');
+    const id = Date.now().toString(36);
+    const name = 'Presser' + id.slice(-5);
+    await page.getByLabel('Email').fill(`press${id}@example.com`);
+    await page.getByRole('button', { name: /Sign in/ }).click();
+    await page.getByLabel('Display name').fill(name);
+    await page.locator('input[type=checkbox]').first().check();
+    await page.getByRole('button', { name: /Start with/ }).click();
+    await page.getByText('Choose the country you’ll lead').waitFor({ timeout: 20_000 });
+    await page.getByPlaceholder('Search countries').fill('United Kingdom');
+    await page.locator('.picker-row:not(.taken)').first().click();
+    await page.getByRole('button', { name: /^Lead / }).click();
+    await page.getByRole('button', { name: /Skip, take me to a city/ }).click({ timeout: 20_000 });
+    await page.getByRole('button', { name: /^Start in London/ }).click({ timeout: 20_000 });
+    await page.locator('.renown-badge').waitFor({ timeout: 30_000 });
+    const me = await one('select id from game.players where display_name = $1', [name]);
+    await page.waitForFunction(() => window.__ccMap && window.__ccMap.loaded(), null, { timeout: 30_000 });
+    await shot('1-city');
+
+    // Money per second is ticking in the HUD.
+    await page.locator('.per-second').waitFor({ timeout: 10_000 }).catch(() => {});
+
+    // Park a cart: Build, choose a spot, tap a street.
+    await page.locator('.dock button', { hasText: 'Build' }).click();
+    await page.getByRole('button', { name: 'Choose a spot' }).click();
+    const city = await one(`select start_lat, start_lng from game.cities where id = 'london'`);
+    const spot = await streetNear('london', city.start_lat, city.start_lng, 12);
+    await page.evaluate(([lng, lat]) => window.__ccMap.jumpTo({ center: [lng, lat] }), [spot.lng, spot.lat]);
+    await page.waitForTimeout(600);
+    const pt = await page.evaluate(([lng, lat]) => window.__ccMap.project([lng, lat]), [spot.lng, spot.lat]);
+    await page.mouse.click(pt.x, pt.y);
+    await page.getByRole('button', { name: /^Buy cart for/ }).click({ timeout: 10_000 });
+    // The business window opens: every tab.
+    await page.getByText(/Your cart is open/).first().waitFor({ timeout: 15_000 });
+    await page.locator('.window').first().waitFor({ timeout: 15_000 });
+    await page.locator('.window [role=tab]').first().waitFor({ timeout: 15_000 });
+    await clickAllTabs(page, '.window');
+    await shot('2-cart');
+    await closeWindow(page);
+
+    // Every dock window and every tab in it.
+    for (const label of ['Empire', 'Market', 'People', 'More']) {
+      await page.locator('.dock button', { hasText: label }).click();
+      await page.locator('.window').first().waitFor({ timeout: 10_000 });
+      await clickAllTabs(page, '.window');
+      await closeWindow(page);
+    }
+    // A market good opens.
+    await page.locator('.dock button', { hasText: 'Market' }).click();
+    await page.locator('.window tbody tr, .window .good-row').first().click({ timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await closeWindow(page);
+
+    // Cities: instant and free.
+    const cash0 = Number((await one('select cash from game.players where id = $1', [me.id])).cash);
+    await page.locator('.dock button', { hasText: 'More' }).click();
+    await page.getByRole('button', { name: /Cities/ }).first().click();
+    await page.getByRole('button', { name: /^Go to Paris/ }).click({ timeout: 10_000 });
+    let where = '';
+    for (let i = 0; i < 40 && where !== 'paris'; i++) {
+      await page.waitForTimeout(250);
+      where = (await one('select city_id from game.players where id = $1', [me.id])).city_id;
+    }
+    assert.equal(where, 'paris', 'moved to Paris at once');
+    await page.waitForFunction(() => window.__ccMap && window.__ccMap.loaded(), null, { timeout: 30_000 }).catch(() => {});
+    assert.ok(Number((await one('select cash from game.players where id = $1', [me.id])).cash) >= cash0 - 1, 'flying is free');
+    await shot('3-paris');
+
+    // The nation: build a fort and a minefield and recruit, from your own cash.
+    await q(`select game.grant_xp($1, (select total from game.level_xp where level = 6)::int, 'test')`, [me.id]);
+    await q(`select game.money($1, 100000000, 'admin', 'test money')`, [me.id]);
+    await page.locator('.dock button', { hasText: 'Nation' }).click();
+    await page.locator('.nation-pill').waitFor({ timeout: 20_000 });
+    await clickAllTabs(page, '.nations-panel');
+    await page.getByRole('tab', { name: 'Military' }).click();
+    for (const b of ['Fort', 'Minefield']) {
+      const c0 = Number((await one('select cash from game.players where id = $1', [me.id])).cash);
+      await page.locator('.build-tile', { hasText: b }).first().click();
+      await page.waitForFunction((b) => document.body.innerText.includes(`${b} level 1 started`), b, { timeout: 10_000 });
+      assert.ok(Number((await one('select cash from game.players where id = $1', [me.id])).cash) < c0, `${b} was paid from your cash`);
+    }
+    await page.getByRole('button', { name: /^Recruit \d+/ }).click();
+    await page.getByText(/Training \d+ infantry/).first().waitFor({ timeout: 10_000 });
+    // Research costs money too.
+    await page.getByRole('tab', { name: 'Research' }).click();
+    await page.locator('.tech:not(.done):not(.locked) button').first().click();
+    await page.waitForTimeout(800);
+    await shot('4-nation');
+    await page.getByRole('button', { name: 'Back to the city' }).click();
+    await page.locator('.renown-badge').waitFor();
+
+    assert.deepEqual(errors, [], 'no console errors');
+  } catch (e) {
+    if (process.env.SHOTS) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: `${process.env.SHOTS}/fail.png` }).catch(() => {});
+    throw e;
+  } finally {
+    await browser.close();
+  }
+});
+
+async function closeWindow(page) {
+  // The sheet's own close button (Escape only closes pop-up dialogs).
+  for (let i = 0; i < 4 && (await page.locator('.window').count()); i++) {
+    await page.locator('.window header [aria-label=Close]').first().click();
+    await page.waitForTimeout(250);
+  }
+  await page.locator('.window').first().waitFor({ state: 'detached', timeout: 5000 });
+}
+
+// Click each tab in the open window(s), including tabs that appear inside tabs.
+async function clickAllTabs(page, scope) {
+  const seen = new Set();
+  for (let round = 0; round < 3; round++) {
+    const tabs = page.locator(`${scope} [role=tab]`);
+    const n = await tabs.count();
+    let clicked = 0;
+    for (let i = 0; i < n; i++) {
+      const t = tabs.nth(i);
+      // The window may re-render under us: skip a tab that went away.
+      const label = ((await t.textContent({ timeout: 2000 }).catch(() => '')) ?? '').trim();
+      if (!label || seen.has(label) || !(await t.isVisible().catch(() => false))) continue;
+      seen.add(label);
+      // A tab strip that scrolls sideways can keep a tab "moving": click it anyway.
+      await t.click({ timeout: 4000 }).catch(() => t.click({ force: true }));
+      await page.waitForTimeout(350);
+      clicked++;
+    }
+    if (!clicked) break;
+  }
+}

@@ -116,7 +116,7 @@ export default function NationPicker({ onDone, onLater }: { onDone: (me: Me) => 
             {n && !n.leader && (
               <p className="small muted" style={{ margin: 0 }}>
                 Run now by a <b>{n.skill_name}</b> AI ({PERSONALITY[n.personality]?.split(':')[0].toLowerCase()}). Claim it and it resets for you:
-                a fresh treasury, a home army and barracks, and 24 hours of protection while you find your feet.
+                a home army and barracks, and 24 hours of protection while you find your feet. Its taxes are paid to you, and you pay for its army from your own cash.
               </p>
             )}
             {st && !st.free && <div className="notice">{st.why}. Pick another country.</div>}

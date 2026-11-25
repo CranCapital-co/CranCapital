@@ -734,7 +734,7 @@ export class WorldLayer implements CustomLayerInterface {
   // when they land; waiting in a queue they wobble gently.
   private drawCrowd() {
     const B = this.parts.blob;
-    const S = PEOPLE_SCALE * 0.85;
+    const S = PEOPLE_SCALE * 1.9; // big, round and easy to see from above
     for (const w of this.crowd.walkers) {
       const pos = this.gridToLocal(w.gx, w.gy, this.v);
       const yaw = WorldLayer.yawOf(w.heading);

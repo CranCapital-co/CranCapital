@@ -38,7 +38,7 @@ Early levels take minutes. Later ones take longer, but there is always a next le
 
 You can reset your perks for free once a week. After that, a reset costs a respec token, which you can find in gold crates.
 
-**Crates.** Open them from the Renown window. A crate holds cash, XP, loyalty points, an XP boost, research, troops or money for your treasury. Every 10th supply crate is guaranteed to be gold. Crates are never sold for real money.
+**Crates.** Open them from the Renown window. A crate holds cash, XP, loyalty points, an XP boost, research, troops or a war chest paid into your cash. Every 10th supply crate is guaranteed to be gold. Crates are never sold for real money.
 
 **Daily reward.** Collect once a day. The reward climbs over a 7-day cycle, with a crate on day 3 and a gold crate on day 7. Missing a day never resets the cycle. It only restarts your streak, which adds a little XP each day. Each 7-day streak earns a shield (up to 2), and a shield covers a missed day.
 

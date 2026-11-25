@@ -146,7 +146,7 @@ const GOODS: Record<string, { name: string; price: number }> = {
   rice: { name: 'Rice', price: 99 }, wasabi: { name: 'Wasabi', price: 66 }, pumpkin: { name: 'Pumpkins', price: 363 }, banana: { name: 'Banana', price: 165 },
 };
 
-type Step = 'intro' | 'walk' | 'place' | 'menu' | 'sell' | 'price' | 'restock' | 'done';
+type Step = 'intro' | 'place' | 'menu' | 'sell' | 'price' | 'restock' | 'done';
 
 export default function Tutorial() {
   const el = useRef<HTMLDivElement>(null);
@@ -232,25 +232,6 @@ export default function Tutorial() {
       }
       if (map.isStyleLoaded()) {
         set('peds', { type: 'FeatureCollection', features: peds.map((q) => { const [a, b] = ROADS[q.r]; return pt(a[0] + (b[0] - a[0]) * q.t + (q.d > 0 ? 3 : -3), a[1] + (b[1] - a[1]) * q.t, { c: q.c }); }) });
-        const s = state.current;
-        if (s.target) {
-          const dx = s.target.x - s.pos.x;
-          const dy = s.target.y - s.pos.y;
-          const d = Math.hypot(dx, dy);
-          const step = 70 * dt;
-          if (d <= step) {
-            s.pos = { ...s.target };
-            s.target = null;
-            if (stepRef.current === 'walk' && Math.hypot(s.pos.x - TARGET.x, s.pos.y - TARGET.y) < 30) setStep('place');
-          } else {
-            s.pos = { x: s.pos.x + (dx / d) * step, y: s.pos.y + (dy / d) * step };
-            // The camera eases after you as you walk.
-            const c = map.getCenter();
-            const [lng, lat] = p(s.pos.x, s.pos.y);
-            const k = Math.min(1, dt * 2.2);
-            if (!map.isMoving()) map.jumpTo({ center: [c.lng + (lng - c.lng) * k, c.lat + (lat - c.lat) * k] });
-          }
-        }
         set('me', { type: 'FeatureCollection', features: [] });
       }
     };

@@ -130,7 +130,10 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     let lastBiz: any[] = [];
     let living: LivingCity | null = null;
 
-    const setGeo = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+    // Async results can land after the map is gone (city switch, nation screen).
+    const setGeo = (id: string, data: GeoJSON.FeatureCollection) => {
+      if (!destroyed) (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
+    };
 
     // ---------- the camera ----------
     // No character: remember where you were looking, for when you come back.
@@ -156,6 +159,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
           rpc<any[]>('map_businesses', args),
           map.getZoom() >= 14 ? rpc<any[]>('map_buildings', args) : Promise.resolve([] as any[]),
         ]);
+        if (destroyed) return;
         setGeo('businesses', {
           type: 'FeatureCollection',
           features: biz.map((x) => {
@@ -197,6 +201,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       const a = plotOf(city, b.getSouth(), b.getWest());
       const z = plotOf(city, b.getNorth(), b.getEast());
       const res = await rpc<any>('map_plots', { p_city: m.id, p_w: b.getWest(), p_s: b.getSouth(), p_e: b.getEast(), p_n: b.getNorth() });
+      if (destroyed) return;
       const owned = new Map<string, any>();
       for (const o of res.owned) owned.set(`${o.px},${o.py}`, o);
       const feats: GeoJSON.Feature[] = [];
@@ -622,6 +627,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
         w.setBusinesses(lastBiz);
         crowd.setEnabled(false); // the 3D crowd replaces the dots
         const { LivingCity } = await import('../world3d/living');
+        if (destroyed) return; // switched city while it loaded
         living = new LivingCity(w, map, dark() ? DARK : LIGHT);
         living.setWeather(lastWeather);
         living.setEvent(lastEvent);
@@ -629,6 +635,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
         loadProjects();
         findRivals();
         // Badges hand over to models as you zoom in; names float above heads.
+        if (!map.getLayer('businesses')) return;
         map.setPaintProperty('businesses', 'icon-opacity', ['step', ['zoom'], 1, 15.5, 0]);
         map.setLayoutProperty('businesses', 'text-offset', ['interpolate', ['linear'], ['zoom'], 15.5, ['literal', [0, 1.6]], 16, ['literal', [0, -2.5]], 18, ['literal', [0, -6]]]);
         map.setLayoutProperty('businesses', 'text-anchor', ['step', ['zoom'], 'top', 16, 'bottom']);
@@ -660,6 +667,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
         const near = carts.filter((b) => !b.mine && distM(b.lat, b.lng, mine.lat, mine.lng) < 60).slice(0, 4);
         if (!near.length) continue;
         const a = await menuOf(mine.id);
+        if (destroyed) return;
         for (const o of near) {
           const bIds = await menuOf(o.id);
           if (a.some((x) => bIds.includes(x))) {
@@ -749,6 +757,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     const watchArrivals = async () => {
       if (!world || document.hidden) return;
       const ships = await rpc<any[]>('my_ships').catch(() => [] as any[]);
+      if (destroyed) return;
       const now = Date.now();
       for (const sh of ships) {
         if (sh.to_city !== m.id || seenArrivals.has(sh.id)) continue;

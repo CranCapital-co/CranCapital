@@ -7,8 +7,7 @@ Phase 2 adds two new systems on top of the business game:
 
 The two systems feed each other:
 
-- Business profits can be invested in your nation.
-- Your nation pays you a leader's stipend.
+- A player-led nation shares one purse with its leader's businesses: taxes are paid to the leader, and everything military (recruits, bases, minefields, research, upkeep) is paid from the leader's cash.
 - Renown perks boost both your businesses and your armies.
 - Military actions earn Renown XP.
 - Renown levels unlock military capabilities.
@@ -77,7 +76,7 @@ The sources are listed at the end.
 - Stability (0–100). Stability drops with high tax, wars and war exhaustion, and rises with peace and alliances. Low stability cuts income and makes occupied land revolt.
 - Upkeep for units and buildings. If the treasury runs dry, units desert.
 
-The leader can invest personal cash into the treasury. The nation pays its human leader a stipend of 3% of income as personal cash.
+For a human leader there is no separate treasury (it is cleared when they claim the country). Each hour the nation's income, less the research and infrastructure shares, is paid to the leader's cash, and upkeep is charged from it; if it can't be paid, some units desert. Research costs a one-off price per technology (20,000 × its research cost, paid once). AI governments keep a treasury and research for free.
 
 **Military.**
 
@@ -115,7 +114,7 @@ The research tree has 21 technologies across land, air, sea, defence, strategy a
   - A ground victory occupies the territory.
 - **War score.** Score comes from occupied land (weighted by value) and battles won.
 - **War exhaustion.** Exhaustion grows with time and losses and lowers stability.
-- **Peace terms.** Peace is white peace, annexing occupied land, or reparations. Unconditional surrender hands over everything occupied plus 25% of the treasury. A country that loses all its land capitulates. Peace starts a 24-hour truce.
+- **Peace terms.** Peace is white peace, annexing occupied land, or reparations. Unconditional surrender hands over everything occupied plus 25% of the treasury (a human leader's cash). A country that loses all its land capitulates. Peace starts a 24-hour truce.
 - **Diplomacy.** Players can improve relations by sending an envoy, denounce a nation (which marks it as a rival), sign non-aggression pacts, and form alliances of up to 6 nations that defend each other.
 
 **AI nations.**

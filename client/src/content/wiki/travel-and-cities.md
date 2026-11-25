@@ -1,6 +1,6 @@
 # Travel and cities
 
-CranCapital has 14 cities: London, New York, Tokyo, Singapore, Paris, Berlin, Toronto, Sydney, Shanghai, Moscow, Rio de Janeiro, Mexico City, Mumbai and Lagos. Each uses real streets and buildings. You start in the city of the country you lead (or the nearest one), and can fly to the others.
+CranCapital has 14 cities: London, New York, Tokyo, Singapore, Paris, Berlin, Toronto, Sydney, Shanghai, Moscow, Rio de Janeiro, Mexico City, Mumbai and Lagos. Each uses real streets and buildings. You start in the city of the country you lead (or the nearest one), and can switch to any other at any time.
 
 ## The four cities
 
@@ -23,38 +23,17 @@ Each city runs on its real local time. Lunch in Tokyo happens while London sleep
 
 Owning businesses in several cities spreads your busy hours around the clock.
 
-## Walking
+## Looking around
 
-You move an avatar around the map. To buy, rent or build something, you must stand close to it.
+There's no character to walk around. You look down on the city and can tap anything in it: a street to park a cart, a building to rent or buy, a plot of land, a block to survey. Drag and pinch to move and zoom.
 
-Usually that means within about 80 metres. A cart needs you within 25 metres of its spot.
+The game never asks for your real location.
 
-Your position is a game position only. The game never asks for your real location.
+## Switching cities
 
-## Taxis
+Open **More**, then **Cities**, and tap **Go to** a city. You're there at once, and it's free.
 
-A taxi takes you anywhere in your current city at once. It costs $3 plus $2 per kilometre.
-
-A 5 km ride costs $13.
-
-## Flights
-
-Your first city is free. After that, moving between cities is a timed flight.
-
-A ticket costs $150 plus 6 cents per kilometre. The flight takes 3 minutes plus 1 minute per 1,500 km.
-
-| Route | Rough distance | Rough ticket | Rough flight time |
-| --- | --- | --- | --- |
-| London to New York | 5,600 km | $485 | 7 minutes |
-| Tokyo to Singapore | 5,300 km | $470 | 7 minutes |
-| London to Tokyo | 9,600 km | $725 | 9 minutes |
-| London to Singapore | 10,900 km | $800 | 10 minutes |
-| New York to Tokyo | 10,900 km | $800 | 10 minutes |
-| New York to Singapore | 15,300 km | $1,070 | 13 minutes |
-
-You see the exact price and time before you confirm.
-
-While you are in the air you can't act on the map. Your businesses keep running as normal.
+Your businesses everywhere keep running while you look at another city.
 
 ## Storage is per city
 

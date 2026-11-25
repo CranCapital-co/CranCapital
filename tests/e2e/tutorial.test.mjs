@@ -29,17 +29,18 @@ test('Tutorial Island draws the 3D world without errors', { timeout: 120_000 }, 
     await page.waitForTimeout(3000);
     let st = await page.evaluate(() => window.__ccWorld.stats());
     assert.ok(st.calls > 0, `3D layer draws (draw calls: ${st.calls})`);
-    assert.ok(st.walkers > 5, `walkers on the island (${st.walkers})`);
-    assert.ok(st.players >= 1, 'your character is there');
+    assert.ok(st.walkers > 5, `blob people on the island (${st.walkers})`);
+    assert.equal(st.players, 0, 'no character: you play from above');
+    if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 
-    // Play the first steps: walk to the square, then park the cart.
+    // Play the first steps: straight to parking the cart (no walking).
     const tap = async (x, y) => {
       const pt = await page.evaluate(([x, y]) => window.__ccTutorialMap.project([-150 + x / 111320, 0.25 + y / 110574]), [x, y]);
       await page.mouse.click(pt.x, pt.y);
     };
     await page.getByRole('button', { name: /Let’s go/ }).click();
-    await tap(30, 8);
     await page.getByText('Park your cart').waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1000); // the camera glides to the square
     await tap(12, 0);
     await page.waitForTimeout(3500); // the build show
     st = await page.evaluate(() => window.__ccWorld.stats());
