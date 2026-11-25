@@ -81,24 +81,24 @@ test('choosing a country: first come first served, one each, a fresh start, prot
   assert.equal((await rpc(b.client, 'my_nation')).nation, null);
 });
 
-test('running a nation: invest, tax, recruit, build and research, all gated and paid for', async () => {
+test('running a nation: your own cash pays for recruits, bases, minefields and research', async () => {
   const a = await newPlayer('Ruler');
   const pair = await freePair('land', 12);
   await rpc(a.client, 'claim_nation', { p_id: pair.a });
-  let mine = await rpc(a.client, 'my_nation');
-  const t0 = Number(mine.nation.treasury);
-
-  // Invest business money: it leaves your cash through the ledger.
+  assert.equal(Number((await one('select treasury from game.nations where id = $1', [pair.a])).treasury), 0, 'a player-led country has no separate treasury');
   await q(`select game.money($1, 100000000, 'admin', 'test money')`, [a.id]);
-  await rpc(a.client, 'nation_invest', { p_amount: 50000000 });
-  mine = await rpc(a.client, 'my_nation');
-  assert.equal(Number(mine.nation.treasury), t0 + 50000000);
-  assert.match(await rpcError(a.client, 'nation_invest', { p_amount: 999999999999 }), /Not enough money/);
+  const cash = async () => Number((await one('select cash from game.players where id = $1', [a.id])).cash);
+  let mine = await rpc(a.client, 'my_nation');
+  assert.equal(Number(mine.nation.treasury), await cash(), 'the nation screen shows your own money');
+  assert.match(await rpcError(a.client, 'nation_invest', { p_amount: 50000000 }), /own money/);
 
-  // Recruit infantry: treasury and manpower pay; it trains in the barracks.
+  // Recruit infantry: your cash and manpower pay; it trains in the barracks.
   const mp0 = Number(mine.nation.manpower);
+  let c0 = await cash();
   const r = await rpc(a.client, 'nation_recruit', { p_territory: pair.a, p_unit: 'infantry', p_qty: 10 });
   assert.equal(Number(r.cost), 3000000);
+  assert.equal(await cash(), c0 - 3000000, 'recruits cost your cash');
+  assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'military'`, [a.id]));
   mine = await rpc(a.client, 'my_nation');
   assert.equal(Number(mine.nation.manpower), mp0 - 500);
   assert.match(await rpcError(a.client, 'nation_recruit', { p_territory: pair.a, p_unit: 'infantry', p_qty: 500 }), /Orders here are 1 to 20/);
@@ -117,41 +117,81 @@ test('running a nation: invest, tax, recruit, build and research, all gated and 
   assert.ok(Number((await one(`select value from game.player_counters where player_id = $1 and key = 'recruited'`, [a.id])).value) >= 10);
 
   // Build a fort (level 4+), then a second level costs four times as much.
-  const before = Number((await rpc(a.client, 'my_nation')).nation.treasury);
+  c0 = await cash();
   const b1 = await rpc(a.client, 'nation_build', { p_territory: pair.a, p_kind: 'fort' });
   assert.equal(Number(b1.cost), 3000000);
+  assert.equal(await cash(), c0 - 3000000, 'bases cost your cash');
   assert.match(await rpcError(a.client, 'nation_build', { p_territory: pair.a, p_kind: 'fort' }), /already being built/);
   assert.match(await rpcError(a.client, 'nation_build', { p_territory: pair.a, p_kind: 'airbase' }), /level 10/);
-  assert.ok(Number((await rpc(a.client, 'my_nation')).nation.treasury) <= before - 3000000);
   await q(`update game.facilities set ready_at = now() - interval '1 second' where territory_id = $1`, [pair.a]);
   await q('select game.world_tick()');
   assert.equal(Number((await one(`select level from game.facilities where territory_id = $1 and kind = 'fort'`, [pair.a])).level), 1);
   const b2 = await rpc(a.client, 'nation_build', { p_territory: pair.a, p_kind: 'fort' });
   assert.equal(Number(b2.cost), 12000000);
 
-  // Research: prerequisites, then the bank feeds it.
+  // Minefields: build one, and it can be levelled up to 3.
+  c0 = await cash();
+  const mf = await rpc(a.client, 'nation_build', { p_territory: pair.a, p_kind: 'minefield' });
+  assert.equal(Number(mf.cost), 2500000);
+  assert.equal(await cash(), c0 - 2500000);
+  await q(`update game.facilities set ready_at = now() - interval '1 second' where territory_id = $1`, [pair.a]);
+  await q('select game.world_tick()');
+  assert.equal(Number((await one(`select level from game.facilities where territory_id = $1 and kind = 'minefield'`, [pair.a])).level), 1);
+
+  // Can't afford it: nothing is taken.
+  const keep = await cash();
+  await q('update game.players set cash = 1000 where id = $1', [a.id]);
+  await q(`delete from game.rate_buckets where subject = $1`, [a.id]);
+  assert.match(await rpcError(a.client, 'nation_recruit', { p_territory: pair.a, p_unit: 'infantry', p_qty: 5 }), /can't afford/);
+  assert.match(await rpcError(a.client, 'nation_research', { p_tech: 'armor' }), /can't afford/);
+  assert.equal(await cash(), 1000);
+  await q('update game.players set cash = $2 where id = $1', [a.id, keep]);
+
+  // Research: prerequisites, a price paid once from your cash, then the bank feeds it.
   assert.match(await rpcError(a.client, 'nation_research', { p_tech: 'jets' }), /needs first|what it needs/);
-  await rpc(a.client, 'nation_research', { p_tech: 'armor' });
+  const price = Number((await one(`select game.research_price('armor') p`)).p);
+  assert.ok(price > 0);
+  c0 = await cash();
+  const rs = await rpc(a.client, 'nation_research', { p_tech: 'armor' });
+  assert.equal(Number(rs.paid), price);
+  assert.equal(await cash(), c0 - price, 'research costs your cash');
+  assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'military' and memo ilike '%research%'`, [a.id]));
+  mine = await rpc(a.client, 'my_nation');
+  assert.equal(mine.techs.find((t) => t.id === 'armor').paid, true);
+  // Switching away and back doesn't charge twice.
+  await rpc(a.client, 'nation_research', { p_tech: 'drills' }).catch(() => null);
+  c0 = await cash();
+  await q(`delete from game.rate_buckets where subject = $1`, [a.id]);
+  const again = await rpc(a.client, 'nation_research', { p_tech: 'armor' });
+  assert.equal(Number(again.paid), 0);
+  assert.equal(await cash(), c0);
   await q(`update game.nations set research_bank = 1000, last_econ_at = now() - interval '1 minute' where id = $1`, [pair.a]);
   await q('select game.nation_economy($1)', [pair.a]);
   mine = await rpc(a.client, 'my_nation');
   assert.ok(mine.techs.find((t) => t.id === 'armor').done);
   assert.equal(mine.nation.researching, null);
 
-  // Policy and the hourly economy: income in, upkeep out, a stipend for the leader.
+  // Policy and the hourly economy: the country's income is paid to you, upkeep comes out of your cash.
   await rpc(a.client, 'nation_policy', { p_tax: 'high', p_research_pct: 20, p_infra_pct: 10 });
   assert.match(await rpcError(a.client, 'nation_policy', { p_tax: 'extreme', p_research_pct: 20, p_infra_pct: 10 }), /low, normal or high/);
   const cash0 = BigInt((await one('select cash from game.players where id = $1', [a.id])).cash);
   await q(`update game.nations set last_econ_at = now() - interval '1 hour' where id = $1`, [pair.a]);
   await q('select game.nation_economy($1)', [pair.a]);
   const cash1 = BigInt((await one('select cash from game.players where id = $1', [a.id])).cash);
-  assert.ok(cash1 > cash0, 'the leader is paid a stipend');
-  assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'stipend'`, [a.id]));
+  assert.ok(cash1 > cash0, 'the leader is paid the country\'s income');
+  assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'nation_income'`, [a.id]));
+  assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'military_upkeep'`, [a.id]));
+  const inc = await rpc(a.client, 'my_income');
+  assert.ok(Number(inc.nation) > 0, 'money per second includes your country');
+  assert.equal(Number(inc.per_hour), Number(inc.business) + Number(inc.nation));
   assert.deepEqual(await ledgerMismatches(), []);
 
-  // Crate prizes reach the nation.
+  // Crate prizes for your country land in your cash.
+  const cb = await cash();
   const label = (await one(`select game.crate_nation_reward($1, 'funds', 5000000) as l`, [a.id])).l;
-  assert.match(label, /treasury/);
+  assert.match(label, /war chest/);
+  assert.equal(await cash(), cb + 5000000);
+  assert.deepEqual(await ledgerMismatches(), []);
 });
 
 test('war: declare, march, win, capture, capitulate and annex', async () => {
@@ -253,12 +293,13 @@ test('a lost battle, peace terms the AI weighs, and allies who come to help', as
     assert.ok(Number((await one(`select value from game.player_counters where player_id = $1 and key = 'treaties'`, [a.id])).value) >= 1);
   }
 
-  // Envoys cost treasury money and warm relations; denouncing an ally isn't allowed.
+  // Envoys cost your money and warm relations; denouncing an ally isn't allowed.
   const target = await freePair('land', 50);
-  const t0 = Number((await one('select treasury from game.nations where id = $1', [pair.a])).treasury);
+  await q(`select game.money($1, 10000000, 'admin', 'test money')`, [a.id]);
+  const t0 = Number((await one('select cash from game.players where id = $1', [a.id])).cash);
   const env = await rpc(a.client, 'diplo_envoy', { p_nation: target.a });
   assert.ok(env.relations >= 10);
-  assert.equal(Number((await one('select treasury from game.nations where id = $1', [pair.a])).treasury), t0 - 2500000);
+  assert.equal(Number((await one('select cash from game.players where id = $1', [a.id])).cash), t0 - 2500000);
   assert.match(await rpcError(a.client, 'diplo_envoy', { p_nation: target.a }), /Slow down/);
   if (friend) assert.match(await rpcError(a.client, 'diplo_denounce', { p_nation: friend.id }), /ally/);
   const info = await rpc(a.client, 'nation_info', { p_id: target.a });

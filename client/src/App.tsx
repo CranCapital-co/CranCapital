@@ -1,12 +1,15 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import Landing from './screens/Landing';
-import { LegalPage, WikiPage, ReportPage } from './screens/Pages';
 import { Toasts } from './ui/components';
 import { IconSprite } from './ui/Icon';
 import { supabase, AUTH_RETURN } from './lib/supabase';
 
 const Play = lazy(() => import('./screens/Play'));
 const Tutorial = lazy(() => import('./screens/Tutorial'));
+// Help and legal pages (with their Markdown) load only when opened.
+const LegalPage = lazy(() => import('./screens/Pages').then((m) => ({ default: m.LegalPage })));
+const WikiPage = lazy(() => import('./screens/Pages').then((m) => ({ default: m.WikiPage })));
+const ReportPage = lazy(() => import('./screens/Pages').then((m) => ({ default: m.ReportPage })));
 
 function useHash() {
   const [hash, setHash] = useState(window.location.hash);

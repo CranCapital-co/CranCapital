@@ -96,6 +96,14 @@ export class Vehicles {
     this.movers.push({ kind: 'ship', from: quay, to: quay.clone().addScaledVector(out, 900), t: 0, dur: 45, wait: 0, yaw: Math.atan2(out.x, out.z), stage: 1 });
   }
 
+  // A ship sails in from the sea to the quay with a delivery.
+  shipIn(at: THREE.Vector3, yaw: number) {
+    const out = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const quay = at.clone().addScaledVector(out, 16);
+    sound.play('horn');
+    this.movers.push({ kind: 'ship', from: quay.clone().addScaledVector(out, 700), to: quay, t: 0, dur: 30, wait: 0, yaw: Math.atan2(-out.x, -out.z), stage: 1 });
+  }
+
   private frame(dt: number) {
     const zoom = this.w.map.getZoom();
     const q = this.w.quality;

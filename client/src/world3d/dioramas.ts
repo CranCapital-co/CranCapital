@@ -2,6 +2,7 @@
 // landmark, a few buildings, a cart and some people. Rendered once to a
 // picture.
 import * as THREE from 'three';
+import { renderToUrl } from './offscreen';
 import { box, rbox, cyl, cone, ball, gable, group, awning, shade } from './kit';
 import { businessModel } from './models';
 
@@ -117,11 +118,6 @@ export function cityDiorama(city: string): string {
   try {
     const W = 480;
     const H = 260;
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
-    r.setClearColor(0x000000, 0);
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight('#fff6e8', '#8a7f6a', 1.35));
     const sun = new THREE.DirectionalLight('#ffe9c8', 2.3);
@@ -155,10 +151,7 @@ export function cityDiorama(city: string): string {
     const cam = new THREE.PerspectiveCamera(26, W / H, 1, 1000);
     cam.position.set(18, 52, 92);
     cam.lookAt(0, 9, -2);
-    r.render(scene, cam);
-    const url = canvas.toDataURL('image/png');
-    r.dispose();
-    r.forceContextLoss();
+    const url = renderToUrl(scene, cam, W, H);
     cache.set(city, url);
     return url;
   } catch {

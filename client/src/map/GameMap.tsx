@@ -18,15 +18,11 @@ import { useGame, catalog } from '../lib/store';
 import { rpc } from '../lib/supabase';
 import { loadWalk, walkable, nearestWalkable, walkImage, plotOf, plotBuildable, plotCoastal, plotPolygon, distM, trafficImage, trafficAt, inCity, type CityData } from '../lib/citydata';
 import { trafficLabel } from '../ui/common';
-import { onPresence, track, type Presence } from '../lib/realtime';
-import { localHour, money, ringFor } from '../lib/format';
+import { localHour, money } from '../lib/format';
 import { reportError } from '../lib/errors';
-import { reducedMotion, useSettings } from '../lib/settings';
-import type { WorldLayer, CharInfo } from '../world3d/WorldLayer';
-import { RING_COLORS } from '../lib/format';
+import { reducedMotion, useSettings, lowPowerDevice } from '../lib/settings';
+import type { WorldLayer } from '../world3d/WorldLayer';
 import { sound } from '../audio/sound';
-
-const WALK_SPEED = 45; // metres per second on screen (server allows up to 60)
 const BASE_MAP_TIMEOUT = 10_000; // ms before we stop waiting for street-map tiles
 
 // Why the street map isn't showing: 'slow' (no tiles yet) or 'blocked'
@@ -55,9 +51,9 @@ export interface MapApi {
 interface Props {
   city: CityData;
   onReady?: (api: MapApi) => void;
-  onArrive?: (lat: number, lng: number) => void;
+
   onPlace?: (lat: number, lng: number) => void;
-  onTaxi?: (lat: number, lng: number) => void;
+  onSurvey?: (lat: number, lng: number) => void;
 }
 
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
@@ -72,7 +68,7 @@ function dark() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches;
 }
 
-export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Props) {
+export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const ghostEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
@@ -80,24 +76,28 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
   const [arrival, setArrival] = useState<string | null>(null);
   const debugEl = useRef<HTMLPreElement>(null);
   const debug = /[?&#]debug\b|[?&]debug=/.test(location.search + location.hash);
-  const cbs = useRef({ onArrive, onPlace, onTaxi });
-  cbs.current = { onArrive, onPlace, onTaxi };
+  const cbs = useRef({ onPlace, onSurvey });
+  cbs.current = { onPlace, onSurvey };
 
   useEffect(() => {
     const g = useGame.getState();
     const m = city.meta;
-    const startPos = g.pos ?? (g.me?.lat && g.me.city_id === m.id ? { lat: g.me.lat, lng: g.me.lng! } : { lat: m.start.lat, lng: m.start.lng });
-    const swoop = !arrived.has(m.id) && !reducedMotion(g.me?.prefs);
+    // There is no character: the camera starts over the city's square (or
+    // where you last looked in this city).
+    const startPos = (g.pos && inCity(m, g.pos.lat, g.pos.lng) ? g.pos : null) ?? { lat: m.start.lat, lng: m.start.lng };
     arrived.add(m.id);
     useGame.setState({ pos: startPos });
+    // iPads and phones: fewer pixels and no multisampling (high-DPI screens
+    // barely need it), so the GPU keeps up and memory stays low.
+    const lowPower = lowPowerDevice();
+    const q = useSettings.getState().quality;
     const map = new maplibregl.Map({
       container: el.current!,
       style: mapStyle(dark() ? DARK : LIGHT, tileBounds(m.bbox)),
       center: [startPos.lng, startPos.lat],
-      // On foot: close in and tilted, like a model city on a table. Arriving
-      // in a city starts high above it, looking straight down.
-      zoom: swoop ? 13.4 : 17.3,
-      pitch: swoop ? 0 : 55,
+      // Tilted, like a model city on a table.
+      zoom: 16.6,
+      pitch: 52,
       bearing: -12,
       maxPitch: 70,
       minZoom: 12.5,
@@ -107,10 +107,12 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         [m.bbox[2] + 0.03, m.bbox[3] + 0.02],
       ],
       attributionControl: false,
-      antialias: useSettings.getState().quality !== 'saver',
-      pixelRatio: Math.min(window.devicePixelRatio || 1, useSettings.getState().quality === 'high' ? 2 : useSettings.getState().quality === 'medium' ? 1.5 : 1),
+      antialias: !lowPower && q !== 'saver',
+      pixelRatio: Math.min(window.devicePixelRatio || 1, q === 'high' ? (lowPower ? 1.5 : 2) : q === 'medium' ? (lowPower ? 1.25 : 1.5) : 1),
       dragRotate: true,
-      doubleClickZoom: false, // a tap walks; pinch or use the buttons to zoom
+      fadeDuration: lowPower ? 0 : 300,
+      refreshExpiredTiles: false,
+      doubleClickZoom: false, // a tap selects; pinch or use the buttons to zoom
     });
     // Touch screens (iPad first): fingers are less precise than a mouse.
     const touch = window.matchMedia?.('(pointer: coarse)').matches ?? false;
@@ -125,113 +127,21 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     let destroyed = false;
     let ready = false; // our sources and layers are on the map
     let world: WorldLayer | null = null; // the 3D layer, once loaded
-    let follow = true; // the camera eases after you as you walk
     let lastBiz: any[] = [];
     let living: LivingCity | null = null;
 
     const setGeo = (id: string, data: GeoJSON.FeatureCollection) => (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 
-    // ---------- my avatar and walking ----------
-    let pos = { ...startPos };
-    let lastReport = 0;
-    const meFeature = () => {
-      const me = useGame.getState().me;
-      return {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [pos.lng, pos.lat] },
-          properties: {
-            icon: `av:${me?.skin ?? 'classic'}:${ringFor(me?.net_worth ?? 0)}:${me?.ring_style ?? 'standard'}`,
-            name: mapText(me?.display_name) || 'You',
-          },
-        }],
-      } as GeoJSON.FeatureCollection;
-    };
-    const presence = (moving: boolean): Presence => {
-      const me = useGame.getState().me!;
-      return { no: me.player_no, n: me.display_name, s: me.skin, r: ringFor(me.net_worth), rs: me.ring_style, t: me.title, lat: pos.lat, lng: pos.lng, in: !!useGame.getState().inside && !moving, at: Date.now() };
-    };
-    const report = (force = false) => {
-      const now = Date.now();
-      if (!force && now - lastReport < 1600) return;
-      lastReport = now;
-      const st = useGame.getState();
-      rpc('report_position', { p_lat: pos.lat, p_lng: pos.lng, p_inside: st.inside }).then((r: any) => {
-        if (r && typeof r.lat === 'number' && distM(r.lat, r.lng, pos.lat, pos.lng) > 60 && !useGame.getState().walkingTo) {
-          pos = { lat: r.lat, lng: r.lng }; // the server held us back
-          useGame.setState({ pos: { ...pos } });
-          setGeo('me', meFeature());
-        }
-      }).catch(() => {});
-    };
+    // ---------- the camera ----------
+    // No character: remember where you were looking, for when you come back.
+    const pos = { ...startPos };
     let rafId = 0;
-    let lastT = 0;
-    const step = (t: number) => {
-      rafId = requestAnimationFrame(step);
-      const dt = Math.min(0.1, (t - (lastT || t)) / 1000);
-      lastT = t;
-      const st = useGame.getState();
-      const target = st.walkingTo;
-      if (!target) return;
-      const d = distM(pos.lat, pos.lng, target.lat, target.lng);
-      const stepM = WALK_SPEED * dt;
-      if (d <= stepM || d < 0.5) {
-        pos = { ...target };
-        useGame.setState({ walkingTo: null, pos: { ...pos } });
-        setGeo('me', meFeature());
-        setGeo('route', empty());
-        report(true);
-        if (st.me) track(presence(false), true);
-        cbs.current.onArrive?.(pos.lat, pos.lng);
-        return;
-      }
-      const f = stepM / d;
-      pos = { lat: pos.lat + (target.lat - pos.lat) * f, lng: pos.lng + (target.lng - pos.lng) * f };
-      setGeo('me', meFeature());
-      if (world && follow && !map.isMoving()) {
-        // Ease after the walker so they stay in view.
-        const c = map.getCenter();
-        const k = Math.min(1, dt * 2.2);
-        map.jumpTo({ center: [c.lng + (pos.lng - c.lng) * k, c.lat + (pos.lat - c.lat) * k] });
-      }
-      setGeo('route', { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[pos.lng, pos.lat], [target.lng, target.lat]] } }] });
-      if (st.me) track(presence(true));
-      report();
-      if (Math.random() < 0.05) useGame.setState({ pos: { ...pos } });
-    };
-
-    // Follow external position changes (taxi, arrival after a flight).
     const unsubPos = useGame.subscribe((s, prev) => {
-      if (s.pos && s.pos !== prev.pos && !s.walkingTo && (s.pos.lat !== pos.lat || s.pos.lng !== pos.lng)) {
-        pos = { ...s.pos };
-        setGeo('me', meFeature());
-      }
-      if (s.me !== prev.me) setGeo('me', meFeature());
       if (s.mode !== prev.mode) applyMode();
       if (s.selection.building !== prev.selection.building) selectBuilding(s.selection.building ?? null);
       if (s.refreshKey !== prev.refreshKey) refreshData();
-      if (s.walkingTo && s.walkingTo !== prev.walkingTo) follow = true;
     });
-
-    // ---------- other players ----------
-    const unsubPresence = onPresence((others) => {
-      const feats: GeoJSON.Feature[] = [];
-      others.forEach((p) => {
-        if (p.in) return;
-        feats.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-          properties: { no: p.no, name: mapText(p.n), icon: `av:${p.s}:${p.r}:${p.rs || 'standard'}` },
-        });
-      });
-      setGeo('players', { type: 'FeatureCollection', features: feats });
-      world?.setPlayers(
-        [...others.values()]
-          .filter((p) => !p.in)
-          .map((p): CharInfo => ({ key: 'p:' + p.no, lat: p.lat, lng: p.lng, skin: p.s, ring: RING_COLORS[p.r] ?? RING_COLORS.none, double: p.rs === 'double', skinTone: p.no % 6 }))
-      );
-    });
+    const unsubPresence = () => {};
 
     // ---------- game data in view ----------
     let refreshing = false;
@@ -422,8 +332,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         cbs.current.onPlace?.(spot.lat, spot.lng);
         return;
       }
-      if (mode.kind === 'taxi') {
-        cbs.current.onTaxi?.(lat, lng);
+      if (mode.kind === 'survey') {
+        cbs.current.onSurvey?.(lat, lng);
         return;
       }
       if (mode.kind === 'land') {
@@ -436,7 +346,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         st.open('property', { plot: { city: m.id, px, py } });
         return;
       }
-      // Walk mode: a 3D business model, avatars, badges, buildings, or walk.
+      // A 3D business model, badges or buildings.
       const hit3d = world?.pick(e.point.x, e.point.y);
       if (hit3d) {
         st.open('business', { id: hit3d.id });
@@ -446,7 +356,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       const pad = touch ? 22 : 8;
       const near = map.queryRenderedFeatures(
         [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]],
-        { layers: ['players', 'businesses'].filter((l) => map.getLayer(l)) }
+        { layers: ['businesses'].filter((l) => map.getLayer(l)) }
       );
       let pick: (typeof near)[number] | null = null;
       let pickD = Infinity;
@@ -459,10 +369,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
           pick = f;
         }
       }
-      if (pick?.layer.id === 'players') {
-        st.open('profile', { player_no: pick.properties.no });
-        return;
-      }
       if (pick?.layer.id === 'businesses') {
         st.open('business', { id: pick.properties.id });
         return;
@@ -474,7 +380,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         st.open('property', { building: Number(bld.id) });
         return;
       }
-      useGame.setState({ walkingTo: { lat, lng }, inside: null });
+      if (st.win) st.close();
     });
 
     // ---------- the street map: watch it, and fall back if it can't load ----------
@@ -549,9 +455,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       map.addSource('plots', { type: 'geojson', data: empty() });
       map.addSource('deposits', { type: 'geojson', data: empty() });
       map.addSource('businesses', { type: 'geojson', data: empty() });
-      map.addSource('players', { type: 'geojson', data: empty() });
-      map.addSource('me', { type: 'geojson', data: meFeature(), attribution: OSM_ATTRIBUTION });
-      map.addSource('route', { type: 'geojson', data: empty() });
+      map.addSource('me', { type: 'geojson', data: empty(), attribution: OSM_ATTRIBUTION });
       const heat = trafficImage(city);
       map.addSource('traffic', { type: 'image', url: heat.url, coordinates: heat.coords });
       map.addLayer({ id: 'traffic', type: 'raster', source: 'traffic', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.55, 'raster-resampling': 'linear' } }, 'building-flat');
@@ -567,7 +471,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         id: 'deposits', type: 'symbol', source: 'deposits', layout: { visibility: 'none', 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true },
         paint: { 'text-color': '#5a3b12', 'text-halo-color': '#ffe9b8', 'text-halo-width': 2 },
       });
-      map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#e8a93a', 'line-width': 3, 'line-dasharray': [1, 1.5] } });
       map.addLayer({
         id: 'businesses', type: 'symbol', source: 'businesses',
         layout: {
@@ -579,31 +482,21 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         },
         paint: { 'text-color': '#2b2b2b', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
       });
-      map.addLayer({
-        id: 'players', type: 'symbol', source: 'players',
-        layout: {
-          'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.5, 18, 0.95], 'icon-allow-overlap': true, 'icon-anchor': 'bottom',
-          'text-field': ['step', ['zoom'], '', 16, ['get', 'name']], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 0.3], 'text-anchor': 'top', 'text-optional': true,
-        },
-        paint: { 'text-color': '#1d3f35', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
-      });
-      map.addLayer({
-        id: 'me', type: 'symbol', source: 'me',
-        layout: { 'icon-image': ['get', 'icon'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.65, 18, 1.15], 'icon-allow-overlap': true, 'icon-anchor': 'bottom' },
-      });
       applyMode();
       refreshData();
-      rafId = requestAnimationFrame(step);
       (window as any).__ccMap = map; // handy for debugging and browser tests
-      loadWorld();
-      if (swoop) {
-        setArrival(m.name);
-        sound.play('whoosh');
-        setTimeout(() => {
-          if (!destroyed) map.flyTo({ center: [startPos.lng, startPos.lat], zoom: 17.3, pitch: 55, bearing: -12, duration: 3200, curve: 1.3, essential: true });
-        }, 400);
-        setTimeout(() => setArrival(null), 3600);
-      }
+      // The 3D layer (Three.js) loads once the street map has drawn, so the
+      // city appears first and the heavy download doesn't compete with it.
+      let started = false;
+      const start3d = () => {
+        if (started || destroyed) return;
+        started = true;
+        loadWorld();
+      };
+      map.once('idle', start3d);
+      setTimeout(start3d, 4000);
+      setArrival(m.name);
+      setTimeout(() => setArrival(null), 2200);
       onReady?.({
         map,
         flyTo: (lat, lng, zoom) => map.flyTo({ center: [lng, lat], zoom: zoom ?? Math.max(map.getZoom(), 16.2), duration: 1200 }),
@@ -657,7 +550,8 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         celebrate: async () => {
           world?.emote('cheer');
           const mine = await rpc<any[]>('my_businesses').catch(() => []);
-          const pts = [...mine.filter((b) => b.city_id === m.id).map((b) => [b.lng, b.lat] as [number, number]), [pos.lng, pos.lat] as [number, number]];
+          const c0 = map.getCenter();
+          const pts = [...mine.filter((b) => b.city_id === m.id).map((b) => [b.lng, b.lat] as [number, number]), [c0.lng, c0.lat] as [number, number]];
           const b = new maplibregl.LngLatBounds(pts[0], pts[0]);
           pts.forEach((p) => b.extend(p));
           map.fitBounds(b, { padding: 140, maxZoom: 17.5, pitch: 50, duration: 1400 });
@@ -681,9 +575,9 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         empireView: async () => {
           const mine = await rpc<any[]>('my_businesses').catch(() => []);
           const here = mine.filter((b) => b.city_id === m.id);
-          const pts = [...here.map((b) => [b.lng, b.lat] as [number, number]), [pos.lng, pos.lat] as [number, number]];
+          const pts = here.map((b) => [b.lng, b.lat] as [number, number]);
           if (pts.length < 2) {
-            map.flyTo({ center: [pos.lng, pos.lat], zoom: 15, pitch: 40, duration: 1200 });
+            map.flyTo({ center: pts[0] ?? [m.start.lng, m.start.lat], zoom: 15.5, pitch: 40, duration: 1200 });
             useGame.getState().toast(here.length ? 'This is your empire in ' + m.name + '.' : 'You don’t own anything in ' + m.name + ' yet.', 'info');
             return;
           }
@@ -693,8 +587,13 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         },
       });
     });
-    map.on('moveend', () => refreshData());
-    map.on('dragstart', () => (follow = false));
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      pos.lat = c.lat;
+      pos.lng = c.lng;
+      useGame.setState({ pos: { lat: c.lat, lng: c.lng } });
+      refreshData();
+    });
 
     // ---------- the 3D world ----------
     // Loaded separately (Three.js is big), only on the play screen. If it
@@ -706,11 +605,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         const { loadModelOverrides } = await import('../world3d/gltf');
         await loadModelOverrides();
         if (destroyed) return;
-        const w = new WorldLayer(city, () => {
-          const me = useGame.getState().me;
-          if (!me) return null;
-          return { key: 'me', lat: pos.lat, lng: pos.lng, skin: me.skin, ring: RING_COLORS[ringFor(me.net_worth)] ?? RING_COLORS.none, double: me.ring_style === 'double', skinTone: me.player_no % 6, moving: !!useGame.getState().walkingTo };
-        });
+        const w = new WorldLayer(city, () => null); // no character of your own
         const before = map.getLayer('water-label') ? 'water-label' : undefined;
         map.addLayer(w, before);
         world = w;
@@ -734,10 +629,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
         loadProjects();
         findRivals();
         // Badges hand over to models as you zoom in; names float above heads.
-        map.setPaintProperty('me', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
-        map.setPaintProperty('players', 'icon-opacity', ['step', ['zoom'], 1, 15, 0]);
-        map.setLayoutProperty('players', 'text-offset', ['interpolate', ['linear'], ['zoom'], 15, ['literal', [0, -1.8]], 18, ['literal', [0, -5.5]]]);
-        map.setLayoutProperty('players', 'text-anchor', 'bottom');
         map.setPaintProperty('businesses', 'icon-opacity', ['step', ['zoom'], 1, 15.5, 0]);
         map.setLayoutProperty('businesses', 'text-offset', ['interpolate', ['linear'], ['zoom'], 15.5, ['literal', [0, 1.6]], 16, ['literal', [0, -2.5]], 18, ['literal', [0, -6]]]);
         map.setLayoutProperty('businesses', 'text-anchor', ['step', ['zoom'], 'top', 16, 'bottom']);
@@ -846,22 +737,29 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     };
     window.addEventListener('cc:built', onBuilt);
     const onDelivery = (e: Event) => ((e as CustomEvent).detail?.ids ?? []).forEach((id: number) => world?.delivery(id));
-    const onShip = (e: Event) => world?.shipOut((e as CustomEvent).detail?.id);
-    const onTaxi = (e: Event) => {
-      const { from, to } = (e as CustomEvent).detail;
-      if (!world || map.getZoom() < 15.5) {
-        map.flyTo({ center: [to.lng, to.lat], duration: 1200 });
-        return;
-      }
-      world.vehicles.taxi(from, to, () => {});
-      setTimeout(() => {
-        map.flyTo({ center: [to.lng, to.lat], zoom: Math.max(map.getZoom(), 17), duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1600 });
-        setTimeout(() => {
-          if (world) world.vehicles.hideMe = false;
-          sound.play('pop');
-        }, 1700);
-      }, 2000);
+    // Shipping: fly to the port and watch the ship leave.
+    const onShip = (e: Event) => {
+      const id = (e as CustomEvent).detail?.id;
+      const b = lastBiz.find((x) => x.id === id);
+      if (b) map.flyTo({ center: [b.lng, b.lat], zoom: Math.max(16.4, Math.min(17.2, map.getZoom())), duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1200 });
+      setTimeout(() => world?.shipOut(id), 1300);
     };
+    // Ships arriving at one of your ports in this city sail in.
+    const seenArrivals = new Set<number>();
+    const watchArrivals = async () => {
+      if (!world || document.hidden) return;
+      const ships = await rpc<any[]>('my_ships').catch(() => [] as any[]);
+      const now = Date.now();
+      for (const sh of ships) {
+        if (sh.to_city !== m.id || seenArrivals.has(sh.id)) continue;
+        const due = new Date(sh.arrive_at).getTime() - now;
+        if (due > 60_000) continue;
+        seenArrivals.add(sh.id);
+        const port = lastBiz.find((x) => x.mine && x.kind === 'port');
+        if (port) setTimeout(() => world?.shipIn(port.id), Math.max(0, due - 30_000));
+      }
+    };
+    const arrivalTimer = setInterval(watchArrivals, 30_000);
     window.addEventListener('cc:delivery', onDelivery);
     // Fast-forward: sweep the sun from when you left until now.
     const onFastForward = (e: Event) => {
@@ -884,7 +782,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
     window.addEventListener('cc:weather', onWeather);
     window.addEventListener('cc:event', onEvent);
     window.addEventListener('cc:ship', onShip);
-    window.addEventListener('cc:taxi', onTaxi);
     window.addEventListener('cc:levelup', onLevel);
 
     // Night falls with the city's local time; crowds follow the clock.
@@ -923,6 +820,7 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       clearInterval(shimmer);
       clearInterval(dbg);
       clearInterval(poll);
+      clearInterval(arrivalTimer);
       unsubPos();
       unsubPresence();
       unsubSettings();
@@ -933,7 +831,6 @@ export default function GameMap({ city, onReady, onArrive, onPlace, onTaxi }: Pr
       window.removeEventListener('cc:weather', onWeather);
       window.removeEventListener('cc:event', onEvent);
       window.removeEventListener('cc:ship', onShip);
-      window.removeEventListener('cc:taxi', onTaxi);
       window.removeEventListener('cc:levelup', onLevel);
       crowd.destroy();
       map.remove();

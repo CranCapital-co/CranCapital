@@ -180,7 +180,7 @@ export function mapStyle(p: Palette = LIGHT, bounds?: [number, number, number, n
       },
       {
         id: 'water-label', type: 'symbol', source: 'ofm', 'source-layer': 'water_name', minzoom: 12,
-        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Italic'], 'text-size': 13 },
+        layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': 13 },
         paint: { 'text-color': '#3b7b86', 'text-halo-color': p.labelHalo, 'text-halo-width': 1 },
       },
       {

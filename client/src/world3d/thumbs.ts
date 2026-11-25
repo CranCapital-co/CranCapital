@@ -3,20 +3,11 @@
 // you see when zoomed out.
 import * as THREE from 'three';
 import { businessModel } from './models';
+import { renderToUrl } from './offscreen';
 
-let renderer: THREE.WebGLRenderer | null = null;
 const cache = new Map<string, string>();
 const waiting = new Map<string, Promise<string>>();
 const SIZE = 192;
-
-function setup() {
-  const canvas = document.createElement('canvas');
-  canvas.width = SIZE;
-  canvas.height = SIZE;
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
-  renderer.setClearColor(0x000000, 0);
-  return renderer;
-}
 
 const solid = new THREE.MeshLambertMaterial({ vertexColors: true });
 const glow = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(0.6, 0.6, 0.6) });
@@ -40,7 +31,6 @@ export function businessThumb(kind: string, tier: number, level = 1): Promise<st
     // Spread the work over frames so opening a menu stays smooth.
     requestAnimationFrame(() => {
       try {
-        const r = renderer ?? setup();
         const m = businessModel(kind, tier, level, 'open');
         const scene = new THREE.Scene();
         scene.add(new THREE.HemisphereLight('#fff6e8', '#8a7f6a', 1.4));
@@ -63,10 +53,7 @@ export function businessThumb(kind: string, tier: number, level = 1): Promise<st
         const dir = new THREE.Vector3(0.75, 0.62, 1).normalize();
         cam.position.copy(sphere.center).addScaledVector(dir, dist);
         cam.lookAt(sphere.center);
-        r.setSize(SIZE, SIZE, false);
-        r.clear();
-        r.render(scene, cam);
-        const url = r.domElement.toDataURL('image/png');
+        const url = renderToUrl(scene, cam, SIZE, SIZE);
         cache.set(key, url);
         resolve(url);
       } catch {

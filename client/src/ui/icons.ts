@@ -67,6 +67,7 @@ export const UI_ICONS: Record<string, string> = {
   chat: `<path ${A} d="M4 5h16v11H9l-5 4z" opacity=".25"/><path d="M4 5h16v11H9l-5 4zM8 9.5h8M8 12.5h5"/>`,
   friends: `<path d="M8.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20a6.5 6.5 0 0 1 13 0"/><path ${A} d="M17 12.5l-3.5-3.4a2 2 0 0 1 2.9-2.8l.6.6.6-.6a2 2 0 0 1 2.9 2.8z"/>`,
   handshake: `<path ${A} d="M8 12l3 3c.8.8 2 .8 2.8 0l3.7-3.7" opacity=".4"/><path d="M2 12l4-5 4 2 3-1 4 1 5 3M2 12l3 3M22 12l-3 3M8 12l3 3c.8.8 2 .8 2.8 0l3.7-3.7M10.5 14.5 8.5 16.5M12.5 16.5l-1.5 1.5"/>`,
+  minefield: `<path ${A} d="M3 19h18v2H3z" opacity=".35"/><path d="M3 20h18"/><circle cx="7" cy="16" r="2.5"/><circle cx="16" cy="15" r="3"/><path d="M7 13.5V12M16 12v-1.5M13.5 13l-1-1M18.5 13l1-1M5 14.5l-1-1"/>`,
   swords: `<path ${A} d="M14.5 17.5 20 12V4h-8L6.5 9.5" opacity=".25"/><path d="M14.5 17.5 20 4l-13.5 5.5M13 19l6 6M19 13l-6 6M4 4l8 8M5 14l5 5M3 21l4-4M17 17l4 4"/>`,
   shield: `<path ${A} d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z" opacity=".3"/><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/>`,
   tank: `<rect ${A} x="3" y="13" width="18" height="6" rx="3" opacity=".3"/><path d="M6 13V10h9l2 3M10 10V8h8M3 16a3 3 0 0 1 3-3h12a3 3 0 0 1 0 6H6a3 3 0 0 1-3-3z"/><circle cx="7" cy="16" r="1"/><circle cx="12" cy="16" r="1"/><circle cx="17" cy="16" r="1"/>`,

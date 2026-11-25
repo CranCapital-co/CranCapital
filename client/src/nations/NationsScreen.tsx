@@ -6,9 +6,12 @@ import { money, num, until } from '../lib/format';
 import { sound } from '../audio/sound';
 import { Icon } from '../ui/Icon';
 import { Modal, Tabs, Loading, useApi } from '../ui/components';
+import type { TroopMap } from './WorldMap';
+import { cityName, goodName as catalogGood } from '../lib/store';
 import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, type WorldMapData } from './api';
 import { OverviewTab, MilitaryTab, ResearchTab, DiplomacyTab, WorldTab, UnitChips, type MyNation, type Ctx } from './NationTabs';
 import NationPicker from './NationPicker';
+import { refreshMe } from '../ui/common';
 import './nations.css';
 
 const WorldMap = lazy(() => import('./WorldMap'));
@@ -20,6 +23,16 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const { data, error } = useWorldMap();
   const world = useWorldState(12000);
   const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 8000);
+  // Where all the troops are, and your ships at sea.
+  const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 10000);
+  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 15000);
+  const ships = useMemo(
+    () => (shipList ?? []).filter((x) => x.status === 'in_transit').map((x) => ({
+      id: x.id, from: x.from as [number, number], to: x.to as [number, number], depart: x.depart_at, arrive: x.arrive_at,
+      label: `${Number(x.qty).toLocaleString()} ${catalogGood(x.good)} → ${cityName(x.to_city)}`,
+    })),
+    [shipList]
+  );
   const [tab, setTab] = useState<Tab>('nation');
   const [sel, setSel] = useState<string | null>(null);
   const [send, setSend] = useState<{ from: string; to?: string } | null>(null);
@@ -62,7 +75,7 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
     );
   }
 
-  const ctx: Ctx | null = my && data ? { my, map: data.map, world, reload, name, select, sendFrom: (from, to) => setSend({ from, to }) } : null;
+  const ctx: Ctx | null = my && data ? { my, map: data.map, world, reload, name, select, sendFrom: (from, to) => setSend({ from, to }), troops: troops ?? null } : null;
   const n = my?.nation;
 
   return (
@@ -78,6 +91,8 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
               selected={sel}
               onSelect={(id) => setSel(id)}
               targets={targets}
+              troops={troops}
+              ships={ships}
               padding={wide ? { right: 440 } : { bottom: Math.round(window.innerHeight * 0.5) }}
             />
           </Suspense>
@@ -92,7 +107,7 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
             <span className="flag big">{flag(data?.map.territories.find((t) => t.id === n.id)?.iso2)}</span>
             <span className="stack" style={{ gap: 0 }}>
               <b>{n.name}</b>
-              <span className="tiny muted tnum">{money(n.treasury, { compact: true, cents: false })} · power {num(n.power)} · {n.share}% of the world</span>
+              <span className="tiny muted tnum">{money(me.cash, { compact: true, cents: false })} · power {num(n.power)} · {n.share}% of the world</span>
             </span>
           </div>
         )}
@@ -138,7 +153,7 @@ function SelectedCard({ id, ctx, onClose }: { id: string; ctx: Ctx; onClose: () 
   const done = () => { reload(); reloadInfo(); };
   const doAct = async (fn: string, args: any, ok: string) => {
     const r = await act(() => rpc<any>(fn, args), (x) => (x?.status === 'declined' ? 'They said no.' : x?.status === 'open' ? 'Offer sent.' : ok));
-    if (r) { sound.play('success'); done(); }
+    if (r) { sound.play('success'); done(); refreshMe(); }
   };
   if (!t) return null;
   return (

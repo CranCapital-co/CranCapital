@@ -91,16 +91,11 @@ export default function BuildWindow() {
           <button
             className="btn small"
             disabled={locked(4)}
-            onClick={async () => {
-              const pos = useGame.getState().pos;
-              if (!pos) return;
-              const r = await act(() => rpc<any>('survey', { p_lat: pos.lat, p_lng: pos.lng }));
-              if (r) {
-                toast(r.deposits.length ? `Survey found ${r.deposits.length} deposit${r.deposits.length > 1 ? 's' : ''}: ${r.deposits.map((d: any) => goodName(d.resource)).join(', ')}. They’re on your map in land mode.` : 'The survey found nothing in this block. Try another area.', r.deposits.length ? 'success' : 'info');
-                set({ mode: { kind: 'land' } });
-                close();
-                refreshMe();
-              }
+            onClick={() => {
+              // No character: pick the block to survey on the map.
+              set({ mode: { kind: 'survey' } });
+              close();
+              toast('Tap a block on the map to survey it for minerals.', 'info');
             }}
           >
             Survey where I’m standing

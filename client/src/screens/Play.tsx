@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { sound } from '../audio/sound';
 import { useIncome } from '../lib/income';
-import { supabase, rpc, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY, AUTH_ERROR } from '../lib/supabase';
+import { supabase, rpc, retrying, DEV_LOGIN, devSignIn, BACKEND_READY, SUPABASE_URL, SUPABASE_KEY, AUTH_ERROR } from '../lib/supabase';
 import { useGame } from '../lib/store';
 import { subscribeUser, unsubscribeUser, leaveWorld, retrack } from '../lib/realtime';
 import { localTime } from '../lib/format';
@@ -267,9 +267,20 @@ export default function Play() {
         leaveWorld();
       }
     });
-    rpc<Catalog>('get_catalog').then((c) => set({ catalog: c })).catch((e) => toast(e.message, 'error'));
     return () => sub.subscription.unsubscribe();
   }, [set, toast]);
+
+  // The game's catalogue (cities, goods, businesses): retried on flaky wifi.
+  useEffect(() => {
+    if (!BACKEND_READY || useGame.getState().catalog) return;
+    let alive = true;
+    retrying(() => rpc<Catalog>('get_catalog'), 4)
+      .then((c) => alive && set({ catalog: c }))
+      .catch((e) => alive && setBootError(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [set, retry]);
 
   // Signed in: load the player, start live updates and the heartbeat.
   useEffect(() => {
@@ -278,7 +289,7 @@ export default function Play() {
     (async () => {
       try {
         setBootError(null);
-        const r = await rpc<any>('session_start');
+        const r = await retrying(() => rpc<any>('session_start'), 3);
         if (!alive) return;
         if (!r) {
           setBootError('Your session has expired. Please sign in again.');
@@ -366,7 +377,7 @@ export default function Play() {
       </div>
     );
   }
-  if (bootError && session && !me) {
+  if (bootError && (!me || !catalog)) {
     return (
       <div className="center-screen">
         <div className="auth-card stack">
@@ -382,7 +393,7 @@ export default function Play() {
   if (booting || (session && !me && !needsProfile)) return <div className="boot"><div className="spinner" /></div>;
   if (!session) return <SignIn />;
   if (needsProfile) return <Onboarding onDone={(m) => set({ me: m, needsProfile: false })} />;
-  if (!me || !catalog) return <div className="boot"><div className="spinner" /></div>;
+  if (!me || !catalog) return <div className="boot"><div className="spinner" /><span className="small muted">Loading your game…</span></div>;
   // First thing: the country you'll lead (first come, first served).
   if (!me.nation && !nationLater()) {
     return <NationPicker onDone={(m) => set({ me: m })} onLater={() => { setNationLater(); set({ me: { ...me } }); }} />;

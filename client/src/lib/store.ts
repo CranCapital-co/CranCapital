@@ -21,7 +21,7 @@ export type Mode =
   | { kind: 'walk' }
   | { kind: 'place-cart' }
   | { kind: 'move-cart'; businessId: number }
-  | { kind: 'taxi' }
+  | { kind: 'survey' }
   | { kind: 'land' };
 
 export interface Toast { id: number; kind: 'error' | 'success' | 'info'; text: string }

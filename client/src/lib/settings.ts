@@ -34,11 +34,19 @@ function load(): Partial<Settings> {
 const saved = load();
 const motionQuery = typeof window !== 'undefined' ? window.matchMedia?.('(prefers-reduced-motion: reduce)') : null;
 
+// Tablets and phones (iPads report themselves as Macs with a touch screen):
+// they get fewer pixels, fewer people and no multisampling by default.
+export function lowPowerDevice(): boolean {
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod|Android/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1)
+    || (window.matchMedia?.('(pointer: coarse)').matches ?? false);
+}
+
 function initialQuality(): Quality {
-  // A first guess for Auto: small or older devices start on Medium.
+  // A first guess for Auto: tablets, phones and small machines start on Medium.
   const cores = navigator.hardwareConcurrency || 4;
   const mem = (navigator as any).deviceMemory || 4;
-  return cores <= 4 || mem <= 3 ? 'medium' : 'high';
+  return lowPowerDevice() || cores <= 4 || mem <= 3 ? 'medium' : 'high';
 }
 
 export const useSettings = create<Settings>((set, get) => ({

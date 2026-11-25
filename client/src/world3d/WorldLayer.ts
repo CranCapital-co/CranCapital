@@ -6,10 +6,11 @@
 // Local coordinates are metres from the city's start point: x east, y up,
 // z south.
 import * as THREE from 'three';
+import { lowPowerDevice } from '../lib/settings';
 import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from 'maplibre-gl';
 import type { CityData } from '../lib/citydata';
 import { Pools } from './pool';
-import { charParts, accentParts, hatParts, walkerParts, carryParts, groundParts, blobShadow, OUTFITS, SKIN_TONES, CHAR, type Outfit } from './people';
+import { charParts, accentParts, hatParts, walkerParts, blobParts, carryParts, groundParts, blobShadow, OUTFITS, SKIN_TONES, CHAR, type Outfit } from './people';
 import { businessModel, propParts, decorParts, marketHall, rivalFlag, ROOM_KINDS, type BizState, type ModelDef } from './models';
 import { box } from './kit';
 import { Vehicles } from './vehicles';
@@ -48,6 +49,7 @@ export interface MeInfo extends CharInfo {
   moving: boolean;
 }
 
+const LOW_POWER = lowPowerDevice();
 const QUALITY: Record<Quality, { people: number; pixelRatio: number; fps: number; particles: boolean }> = {
   high: { people: 300, pixelRatio: 2, fps: 60, particles: true },
   medium: { people: 150, pixelRatio: 1.5, fps: 60, particles: true },
@@ -115,6 +117,7 @@ export class WorldLayer implements CustomLayerInterface {
     acc: accentParts(),
     hats: hatParts(),
     walk: walkerParts(),
+    blob: blobParts(),
     carry: carryParts(),
     ground: groundParts(),
     props: propParts(),
@@ -229,7 +232,7 @@ export class WorldLayer implements CustomLayerInterface {
   setQuality(q: Quality) {
     this.quality = q;
     if (!this.map) return; // applied when the layer is added
-    const pr = Math.min(window.devicePixelRatio || 1, QUALITY[q].pixelRatio);
+    const pr = Math.min(window.devicePixelRatio || 1, QUALITY[q].pixelRatio, lowPowerDevice() ? (q === 'high' ? 1.5 : 1.25) : 9);
     if (Math.abs(this.map.getPixelRatio() - pr) > 0.01) this.map.setPixelRatio(pr);
   }
 
@@ -355,6 +358,11 @@ export class WorldLayer implements CustomLayerInterface {
     const b = this.biz.get(businessId);
     if (b) this.vehicles.delivery(b.pos, b.yaw);
   }
+  shipIn(businessId: number) {
+    const b = this.biz.get(businessId);
+    if (b) this.vehicles.shipIn(b.pos, b.yaw);
+  }
+
   shipOut(businessId: number) {
     const b = this.biz.get(businessId);
     if (b) this.vehicles.ship(b.pos, b.yaw);
@@ -440,7 +448,7 @@ export class WorldLayer implements CustomLayerInterface {
       }
       if (zoom >= 15) this.drawChars(dt);
       if (close && this.city.walk) {
-        this.crowd.setView(cg.gx, cg.gy, radius, this.hourLevel, q.people, this.eventMult);
+        this.crowd.setView(cg.gx, cg.gy, radius, this.hourLevel, LOW_POWER ? Math.round(q.people * 0.7) : q.people, this.eventMult);
         this.crowd.update(dt);
         this.drawCrowd();
       }
@@ -722,40 +730,41 @@ export class WorldLayer implements CustomLayerInterface {
   }
 
   // ---------- crowd ----------
+  // Blobs that bounce as they go: they stretch on the way up and squash
+  // when they land; waiting in a queue they wobble gently.
   private drawCrowd() {
-    const P = this.parts.walk;
-    const S = PEOPLE_SCALE;
+    const B = this.parts.blob;
+    const S = PEOPLE_SCALE * 0.85;
     for (const w of this.crowd.walkers) {
       const pos = this.gridToLocal(w.gx, w.gy, this.v);
       const yaw = WorldLayer.yawOf(w.heading);
       const moving = w.state === 'walk' || w.state === 'toShop' || w.state === 'leave';
-      const bob = moving ? Math.abs(Math.sin(w.phase)) * 0.18 : 0;
-      const swing = moving ? Math.sin(w.phase) * 0.55 : 0;
+      let lift = 0;
+      let sy = 1;
+      if (moving) {
+        const hop = Math.abs(Math.sin(w.phase * 0.85)); // 0 on the ground, 1 at the top
+        lift = hop * 1.1 * S;
+        const landing = Math.max(0, 1 - hop * 4); // squash just as it lands
+        sy = 1 + 0.16 * hop - 0.24 * landing;
+      } else {
+        sy = 1 + 0.05 * Math.sin(this.time * 4 + w.id);
+      }
+      const sxz = 1 / Math.sqrt(sy);
       const px = pos.x;
       const pz = pos.z;
-      const base = this.mBase.compose(this.vPart.set(px, 0, pz), this.q.setFromAxisAngle(this.yAxis, yaw), this.sc.setScalar(S));
-      const hipY = 1.7 * P.scale + bob;
-      const leg = (x: number, a: number) => this.tmp2.multiplyMatrices(base, this.mPart.compose(this.vPart.set(x, hipY, 0), this.qPart.setFromAxisAngle(this.xAxis, a), this.one));
-      // Shorts in a heatwave: bare legs.
-      const lc = this.col.set(this.eventKind === 'heatwave' && w.id % 2 === 0 ? SKIN_TONES[w.skin] : WALKER_LEGS[w.legs]);
-      this.pools.get('w-leg', () => P.leg, 'solid', true).add(leg(-0.3 * P.scale, swing), lc);
-      this.pools.get('w-leg', () => P.leg, 'solid', true).add(leg(0.3 * P.scale, -swing), lc);
-      const bodyM = this.tmp2.multiplyMatrices(base, this.mPart.makeTranslation(0, hipY, 0));
-      this.pools.get('w-body' + w.shape, () => P.bodies[w.shape], 'solid', true).add(bodyM, this.col.set(WALKER_CLOTHES[w.clothes]));
-      const bodyH = (w.shape === 2 ? 1.8 : w.shape === 1 ? 1.55 : 1.65) * P.scale;
-      // Heads turn toward your menu board as they pass.
-      const headM = this.mOut.multiplyMatrices(base, this.mPart.compose(this.vPart.set(0, hipY + bodyH, 0), this.qPart.setFromAxisAngle(this.yAxis, w.slow * 0.6), this.one));
-      this.pools.get('w-head', () => P.head, 'solid', true).add(headM, this.col.set(SKIN_TONES[w.skin]));
-      this.pools.get('w-hair', () => P.hair, 'solid', true).add(headM, this.col.set(HAIR[w.hair]));
-      if (this.rainK > 0.3 && w.id % 3 !== 0 && (w.state === 'walk' || w.state === 'leave' || w.state === 'toShop')) {
-        const m = this.tmp2.multiplyMatrices(base, this.mPart.compose(this.vPart.set(0.55, hipY - 0.3, 0.1), this.qPart.identity(), this.sc.setScalar(1.25)));
-        this.pools.get('umbrella', () => this.parts.carry.umbrella, 'solid', true).add(m, this.col.set(WALKER_CLOTHES[(w.clothes + 3) % WALKER_CLOTHES.length]));
+      const m = this.mBase.compose(this.vPart.set(px, lift, pz), this.q.setFromAxisAngle(this.yAxis, yaw), this.sc.set(S * sxz, S * sy, S * sxz));
+      this.pools.get('blob', () => B.body, 'solid', true).add(m, this.col.set(WALKER_CLOTHES[w.clothes]));
+      if (this.rainK > 0.3 && w.id % 3 !== 0 && moving) {
+        const um = this.tmp2.multiplyMatrices(m, this.mPart.compose(this.vPart.set(0, 1.9, 0), this.qPart.identity(), this.sc.setScalar(0.9)));
+        this.pools.get('umbrella', () => this.parts.carry.umbrella, 'solid', true).add(um, this.col.set(WALKER_CLOTHES[(w.clothes + 3) % WALKER_CLOTHES.length]));
       } else if (w.carry) {
-        const m = this.tmp2.multiplyMatrices(base, this.mPart.makeTranslation(0.95, hipY - 0.9 + bob * 0.5, 0.2));
-        if (w.carry === 1) this.pools.get('carry-bag', () => this.parts.carry.bag, 'solid', true).add(m, this.col.set('#e8d9b8'));
-        else this.pools.get('carry-cup', () => this.parts.carry.cup, 'solid', true).add(m, this.col.set('#ffffff'));
+        const cm = this.tmp2.multiplyMatrices(m, this.mPart.makeTranslation(1.15, 0.7, 0.2));
+        if (w.carry === 1) this.pools.get('carry-bag', () => this.parts.carry.bag, 'solid', true).add(cm, this.col.set('#e8d9b8'));
+        else this.pools.get('carry-cup', () => this.parts.carry.cup, 'solid', true).add(cm, this.col.set('#ffffff'));
       }
-      this.tmp.compose(this.v.set(px, 0, pz), this.q.identity(), this.sc.set(S * 0.9, 1, S * 0.75));
+      // The shadow shrinks as the blob jumps.
+      const k = 1 - Math.min(0.5, lift / (3 * S));
+      this.tmp.compose(this.v.set(px, 0, pz), this.q.identity(), this.sc.set(S * 1.05 * k, 1, S * 1.05 * k));
       this.pools.get('shadow', blobShadow, 'shadow').add(this.tmp);
     }
   }

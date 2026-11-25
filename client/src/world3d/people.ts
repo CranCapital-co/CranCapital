@@ -7,7 +7,7 @@
 // street zoom. Part origins are at their joints: legs and arms hang from
 // y = 0, the torso and head stand on y = 0.
 import * as THREE from 'three';
-import { box, rbox, ball, cyl, cone, group, torus } from './kit';
+import { box, rbox, ball, cyl, cone, group, torus, sphere } from './kit';
 
 const W = '#ffffff';
 const EYE = '#1e1e24';
@@ -104,6 +104,20 @@ export function walkerParts() {
     hair,
     scale: s,
   };
+}
+
+// The crowd: round blobs with big eyes that bounce along (one merged
+// geometry each, tinted per person; the eyes keep their own colour).
+// Origin at the bottom centre.
+export function blobParts() {
+  const eye = (x: number) => group([sphere(0.26, '#ffffff', { at: [x, 1.55, 0.98], scale: [1, 1.15, 0.6] }, 8, 6), sphere(0.13, EYE, { at: [x, 1.55, 1.12], scale: [1, 1.15, 0.6] }, 6, 4)]);
+  const body = group([
+    sphere(1.15, W, { at: [0, 1.15, 0], scale: [1, 1.05, 1] }, 14, 10),
+    eye(-0.36),
+    eye(0.36),
+    rbox(0.5, 0.08, 0.1, '#7a3a2a', { at: [0, 1.08, 1.12] }, 0.03), // a little smile
+  ]);
+  return { body };
 }
 
 // Things people carry after buying.

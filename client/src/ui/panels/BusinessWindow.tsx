@@ -367,7 +367,7 @@ function FitoutEditor({ b, onSaved }: { b: Business; onSaved: () => void }) {
   const missing = cat.fitout_items.filter((f) => f.required_for.includes(t.menu_category!) && !after[f.id]);
   return (
     <div className="stack">
-      <p className="small muted">Pick an item, then tap tiles to place it. Tap a filled tile with the eraser to remove it (you get half the price back).</p>
+      <p className="small muted">Pick an item, then tap tiles to add it. Tap a filled tile with the eraser to remove it (you get half the price back). Which tile doesn't matter: your staff set the room out neatly, as in the picture above.</p>
       <div className="palette">
         <button className={brush === null ? 'on' : ''} onClick={() => setBrush(null)}><Icon name="eraser" size={18} /> Eraser</button>
         {items.map((f) => (
@@ -590,8 +590,13 @@ function ShippingTab({ b }: { b: Business }) {
         </div>
       )}
       <button className="btn" disabled={!good || qty <= 0} onClick={async () => {
-        const r = await act(() => rpc<any>('ship', { p_port: b.id, p_good: good, p_qty: qty, p_to: to, p_kind: kind }), (x) => `Ship sailed: arrives in ${x.arrive_minutes} minutes. Freight ${money(x.freight)}.`);
-        if (r) { window.dispatchEvent(new CustomEvent('cc:ship', { detail: { id: b.id } })); reload(); refreshMe(); }
+        const r = await act(() => rpc<any>('ship', { p_port: b.id, p_good: good, p_qty: qty, p_to: to, p_kind: kind }), (x) => `Ship sailed: arrives in ${x.arrive_minutes} minutes (freight ${money(x.freight)}). Follow it on the world map under Nation.`);
+        if (r) {
+          refreshMe();
+          // Watch it leave, then follow it on the world map (Nation).
+          useGame.getState().close();
+          window.dispatchEvent(new CustomEvent('cc:ship', { detail: { id: b.id } }));
+        }
       }}>
         Ship it
       </button>
