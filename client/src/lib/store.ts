@@ -49,7 +49,6 @@ interface State {
   toasts: Toast[];
   away: any | null;
   pos: { lat: number; lng: number } | null;
-  walkingTo: { lat: number; lng: number } | null;
   inside: number | null;
   refreshKey: number; // bump to make open windows reload
   set: (p: Partial<State>) => void;
@@ -76,7 +75,6 @@ export const useGame = create<State>((set, get) => ({
   toasts: [],
   away: null,
   pos: null,
-  walkingTo: null,
   inside: null,
   refreshKey: 0,
   set: (p) => set(p),
