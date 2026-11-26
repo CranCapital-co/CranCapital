@@ -64,6 +64,7 @@ export const UI_ICONS: Record<string, string> = {
   storage: `<path ${A} d="M3 8l9-5 9 5v12H3z" opacity=".2"/><path d="M3 8l9-5 9 5v12H3zM7 20v-8h10v8M7 15h10"/>`,
   box: `<path ${A} d="M3 7l9-4 9 4v10l-9 4-9-4z" opacity=".25"/><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>`,
   bank: `<path ${A} d="M3 9l9-5 9 5z" opacity=".35"/><path d="M3 9l9-5 9 5zM5 9v8M9.5 9v8M14.5 9v8M19 9v8M3 20h18M4 17h16"/>`,
+  send: `<path ${A} d="M3 11l18-8-6 18-3-7z" opacity=".3"/><path d="M3 11l18-8-6 18-3-7zM12 14l9-11"/>`,
   chat: `<path ${A} d="M4 5h16v11H9l-5 4z" opacity=".25"/><path d="M4 5h16v11H9l-5 4zM8 9.5h8M8 12.5h5"/>`,
   friends: `<path d="M8.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20a6.5 6.5 0 0 1 13 0"/><path ${A} d="M17 12.5l-3.5-3.4a2 2 0 0 1 2.9-2.8l.6.6.6-.6a2 2 0 0 1 2.9 2.8z"/>`,
   handshake: `<path ${A} d="M8 12l3 3c.8.8 2 .8 2.8 0l3.7-3.7" opacity=".4"/><path d="M2 12l4-5 4 2 3-1 4 1 5 3M2 12l3 3M22 12l-3 3M8 12l3 3c.8.8 2 .8 2.8 0l3.7-3.7M10.5 14.5 8.5 16.5M12.5 16.5l-1.5 1.5"/>`,

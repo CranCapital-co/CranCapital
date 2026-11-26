@@ -305,7 +305,10 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       paint();
     });
     if (m.isStyleLoaded()) go();
-    m.getCanvas().addEventListener('webglcontextlost', () => setFailed(true));
+    // A real loss of the graphics context (not our own, when the map closes).
+    const onLost = () => setFailed(true);
+    m.getCanvas().addEventListener('webglcontextlost', onLost);
+    m.on('webglcontextrestored', () => setFailed(false));
     const ro = new ResizeObserver(() => m.resize());
     ro.observe(el.current);
     m.on('click', (e) => {
@@ -319,6 +322,7 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     return () => {
       clearInterval(anim);
       ro.disconnect();
+      m.getCanvas().removeEventListener('webglcontextlost', onLost);
       m.remove();
       mapRef.current = null;
       ready.current = false;

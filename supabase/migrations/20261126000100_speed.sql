@@ -205,14 +205,15 @@ exception when others then
   raise warning 'economy % failed: %', p_id, sqlerrm;
 end $$;
 
--- The whole tick in one go (tests, and anything that wants it in one transaction).
+-- The whole tick in one go (tests, and anything that wants it in one
+-- transaction). pg_cron runs world_run instead; this waits for it.
 create or replace function game.world_tick() returns void
 language plpgsql set search_path = game, pg_temp as $$
 declare
   v_id text;
   v_stage text;
 begin
-  if not pg_try_advisory_xact_lock(434343) then return; end if;
+  perform pg_advisory_xact_lock(434343);
   for v_id in select id from game.nations where status = 'active' loop
     perform game.world_economy_one(v_id);
   end loop;

@@ -11,12 +11,13 @@ import { cityName, goodName as catalogGood } from '../lib/store';
 import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, type WorldMapData } from './api';
 import { OverviewTab, MilitaryTab, ResearchTab, DiplomacyTab, WorldTab, UnitChips, type MyNation, type Ctx } from './NationTabs';
 import NationPicker from './NationPicker';
+import { TalkTab } from './TalkTab';
 import { refreshMe } from '../ui/common';
 import './nations.css';
 
 const WorldMap = lazy(() => import('./WorldMap'));
 
-type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'world';
+type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'talk' | 'world';
 
 export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const me = useGame((s) => s.me)!;
@@ -34,6 +35,8 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
     [shipList]
   );
   const [tab, setTab] = useState<Tab>('nation');
+  const [talkTo, setTalkTo] = useState<string | null>(null);
+  const talk = (id: string) => { setTalkTo(id); setTab('talk'); };
   const [sel, setSel] = useState<string | null>(null);
   const [send, setSend] = useState<{ from: string; to?: string } | null>(null);
   const [wide, setWide] = useState(() => window.innerWidth >= 900);
@@ -130,16 +133,16 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
       </header>
 
       <aside className={`nations-panel ${wide ? 'side' : 'bottom'}`}>
-        {sel && ctx && <SelectedCard id={sel} ctx={ctx} onClose={() => setSel(null)} />}
+        {sel && ctx && tab !== 'talk' && <SelectedCard id={sel} ctx={ctx} onClose={() => setSel(null)} onTalk={talk} />}
         <div className="tab-sticky">
           <Tabs<Tab>
-            tabs={[['nation', 'Nation'], ['military', 'Military'], ['research', 'Research'], ['diplomacy', `Diplomacy${my?.offers.some((o) => o.incoming) ? ' •' : ''}`], ['world', 'World']]}
+            tabs={[['nation', 'Nation'], ['military', 'Military'], ['research', 'Research'], ['diplomacy', `Diplomacy${my?.offers.some((o) => o.incoming) ? ' •' : ''}`], ['talk', 'Talk'], ['world', 'World']]}
             value={tab}
             onChange={setTab}
           />
         </div>
         <div className="nations-body scroll">
-          {!ctx ? <Loading lines={6} /> : tab === 'nation' ? <OverviewTab {...ctx} /> : tab === 'military' ? <MilitaryTab {...ctx} /> : tab === 'research' ? <ResearchTab {...ctx} /> : tab === 'diplomacy' ? <DiplomacyTab {...ctx} /> : <WorldTab {...ctx} />}
+          {!ctx ? <Loading lines={6} /> : tab === 'nation' ? <OverviewTab {...ctx} /> : tab === 'military' ? <MilitaryTab {...ctx} /> : tab === 'research' ? <ResearchTab {...ctx} /> : tab === 'diplomacy' ? <DiplomacyTab {...ctx} /> : tab === 'talk' ? <TalkTab ctx={ctx} open={talkTo} onOpen={setTalkTo} /> : <WorldTab {...ctx} />}
         </div>
       </aside>
 
@@ -151,7 +154,7 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 // The card for a tapped country
 // ---------------------------------------------------------------------------
-function SelectedCard({ id, ctx, onClose }: { id: string; ctx: Ctx; onClose: () => void }) {
+function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onClose: () => void; onTalk: (id: string) => void }) {
   const { my, map, world, reload, name } = ctx;
   const holder = world?.territories.find((t) => t[0] === id);
   const controller = holder?.[2] ?? id;
@@ -214,6 +217,7 @@ function SelectedCard({ id, ctx, onClose }: { id: string; ctx: Ctx; onClose: () 
               <span className="chip"><Icon name="lock" size={14} /> War at level {my.unlocks.war}</span>
             )
           )}
+          <button className="btn small" onClick={() => onTalk(controller)}><Icon name="chat" size={16} /> Talk</button>
           {!atWar && <button className="btn small ghost" onClick={() => doAct('diplo_envoy', { p_nation: controller }, 'Envoy sent: relations improved.')}><Icon name="mail" size={16} /> Envoy · $2,500</button>}
           {!atWar && !allied && <button className="btn small ghost" onClick={() => doAct('diplo_denounce', { p_nation: controller }, 'Denounced.')}>Denounce</button>}
           {!atWar && !allied && !info?.treaty && level >= (my.unlocks.nap ?? 6) && (

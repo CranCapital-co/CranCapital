@@ -649,3 +649,54 @@ language sql stable security definer set search_path = game, pg_temp as $$
                   order by at desc), '[]'::jsonb)
                 from game.battles where at > now() - interval '10 minutes'))
 $$;
+
+-- A manual reset (tests, admins) no longer starts an era.
+create or replace function game.world_reset() returns void
+language plpgsql set search_path = game, pg_temp as $$
+declare
+  v_gdp numeric;
+  v_pop numeric;
+  v_n int;
+  v_t record;
+begin
+  select sum(gdp_bn), sum(pop_m), count(*) into v_gdp, v_pop, v_n from game.territories;
+  update game.territories set
+    income = round((800 + 120 * sqrt(gdp_bn)) * 1000)::bigint,
+    manpower = round(200 + 60 * sqrt(pop_m))::int,
+    militia = round(10 + 3 * sqrt(pop_m), 1),
+    value = 0.5 * gdp_bn / v_gdp + 0.3 * pop_m / v_pop + 0.2 / v_n;
+  -- Every country has a nation. Skill follows economic weight, with
+  -- surprises; personality is fixed per country.
+  insert into game.nations (id, name, color, ai_skill, personality)
+  select t.id, t.name, t.color,
+    greatest(1, least(5, case when r <= 12 then 5 when r <= 32 then 4 when r <= 70 then 3 when r <= 120 then 2 else 1 end
+      + case when abs(hashtext(t.id)) % 100 < 12 then 1 when abs(hashtext(t.id)) % 100 > 88 then -1 else 0 end)),
+    case when abs(hashtext(t.id || 'p')) % 100 < 18 then 'aggressive'
+         when abs(hashtext(t.id || 'p')) % 100 < 36 then 'expansionist'
+         when abs(hashtext(t.id || 'p')) % 100 < 56 then 'balanced'
+         when abs(hashtext(t.id || 'p')) % 100 < 71 then 'defensive'
+         when abs(hashtext(t.id || 'p')) % 100 < 86 then 'diplomatic'
+         else 'mercantile' end
+  from (select *, rank() over (order by gdp_bn desc) r from game.territories) t
+  on conflict (id) do nothing;
+  delete from game.movements;
+  delete from game.diplo_offers;
+  delete from game.war_sides;
+  update game.wars set status = 'ended', ended_at = now(), outcome = coalesce(outcome, 'A new era began') where status = 'active';
+  delete from game.treaties;
+  delete from game.relations;
+  delete from game.alliance_members;
+  delete from game.alliances;
+  delete from game.garrisons;
+  delete from game.recruit_queue;
+  delete from game.facilities;
+  for v_t in select id from game.territories loop
+    perform game.nation_start(v_t.id, true);
+  end loop;
+  update game.nations set protected_until = now() + interval '24 hours' where leader_id is not null;
+  -- No eras any more: a reset (only ever done by hand) just clears the board.
+  update game.eras set ended_at = coalesce(ended_at, now()) where ended_at is null;
+  update game.coalitions set ended_at = now() where ended_at is null;
+  update game.nations set income_h = (game.nation_income(id) ->> 'gross')::bigint where status = 'active';
+  perform game.world_scores();
+end $$;
