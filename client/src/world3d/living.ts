@@ -52,6 +52,9 @@ export function season(d = new Date()) {
 const RAIN_CODES = (c: number | null) => c != null && ((c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95);
 const SNOW_CODES = (c: number | null) => c != null && ((c >= 71 && c <= 77) || c === 85 || c === 86);
 
+// Street lamps (and the decorations hung on them) are gone: iPad performance.
+const NO_LAMPS = true;
+
 export class LivingCity {
   weather: Weather | null = null;
   event: string | null = null;
@@ -156,6 +159,10 @@ export class LivingCity {
   // Lamp posts every ~32 m along the main roads near the camera.
   private placeLamps() {
     this.lampsAt = performance.now();
+    if (NO_LAMPS) {
+      this.lamps = [];
+      return;
+    }
     const lanes = this.w.vehicles?.lanes ?? [];
     const out: { p: THREE.Vector3; yaw: number }[] = [];
     for (const l of lanes) {

@@ -97,9 +97,9 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       center: [startPos.lng, startPos.lat],
       // Tilted, like a model city on a table.
       zoom: 16.6,
-      pitch: 52,
+      pitch: lowPower ? 45 : 52,
       bearing: -12,
-      maxPitch: 70,
+      maxPitch: lowPower ? 60 : 70,
       minZoom: 12.5,
       maxZoom: 19.5,
       maxBounds: [
@@ -108,7 +108,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       ],
       attributionControl: false,
       antialias: !lowPower && q !== 'saver',
-      pixelRatio: Math.min(window.devicePixelRatio || 1, q === 'high' ? (lowPower ? 1.5 : 2) : q === 'medium' ? (lowPower ? 1.25 : 1.5) : 1),
+      pixelRatio: Math.min(window.devicePixelRatio || 1, q === 'high' ? (lowPower ? 1.25 : 2) : q === 'medium' ? (lowPower ? 1 : 1.5) : 1),
       dragRotate: true,
       fadeDuration: lowPower ? 0 : 300,
       refreshExpiredTiles: false,

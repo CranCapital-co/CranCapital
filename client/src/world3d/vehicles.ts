@@ -13,6 +13,9 @@ interface Mover { kind: 'van' | 'taxi' | 'ship'; from: THREE.Vector3; to: THREE.
 const CAR_COLORS = ['#e3694d', '#3f8ed6', '#f6efe0', '#2b2f33', '#9aa3ad', '#2f6f5e', '#c9302c', '#e8b23a', '#5b6c8c'];
 const COUNT = { high: 36, medium: 16, saver: 0 };
 
+// Cars, buses, taxis and vans are gone (iPad performance).
+const NO_CARS = true;
+
 export class Vehicles {
   lanes: Lane[] = [];
   private cars: Car[] = [];
@@ -82,6 +85,7 @@ export class Vehicles {
 
   // A delivery van drives along the street past the business, stopping outside.
   delivery(at: THREE.Vector3, yaw: number) {
+    if (NO_CARS) return;
     const front = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const side = new THREE.Vector3(front.z, 0, -front.x);
     const stop = at.clone().addScaledVector(front, 9);
@@ -105,9 +109,12 @@ export class Vehicles {
   }
 
   private frame(dt: number) {
-    const zoom = this.w.map.getZoom();
-    const q = this.w.quality;
-    if (zoom >= 15.5 && COUNT[q] > 0) {
+    // No street traffic any more (it cost a road scan every few seconds and
+    // a few hundred moving models): only the ships that carry your exports.
+    if (NO_CARS) {
+      /* no cars */
+    } else if (this.w.map.getZoom() >= 15.5 && COUNT[this.w.quality] > 0) {
+      const q = this.w.quality;
       if (performance.now() - this.lastFetch > 8000) this.fetchLanes();
       const want = Math.min(COUNT[q], this.lanes.length * 3);
       while (this.cars.length < want && this.lanes.length) {
