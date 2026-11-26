@@ -156,7 +156,8 @@ test('press everything', { timeout: 300_000 }, async () => {
     const cashA = Number((await one('select cash from game.players where id = $1', [me.id])).cash);
     await page.getByRole('button', { name: '+$1M' }).click();
     await page.getByText(/Gave .* \$1,000,000/).first().waitFor({ timeout: 10_000 });
-    assert.equal(Number((await one('select cash from game.players where id = $1', [me.id])).cash), cashA + 1e9);
+    // At least $1M more (the cart may have made a sale meanwhile).
+    assert.ok(Number((await one('select cash from game.players where id = $1', [me.id])).cash) >= cashA + 1e9, 'admin money arrived');
     await page.getByRole('button', { name: '+5 levels' }).click();
     await page.getByText(/is now level/).first().waitFor({ timeout: 10_000 });
     await shot('7-admin');

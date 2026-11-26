@@ -32,7 +32,9 @@ async function api(method, p, body) {
     });
     const text = await res.text();
     if (res.ok) return text ? JSON.parse(text) : null;
-    if ((res.status === 429 || res.status >= 500) && attempt < 5) {
+    // Busy or briefly locked by live traffic (a deadlock while re-applying
+    // grants, say): wait and try again.
+    if ((res.status === 429 || res.status >= 500 || /deadlock detected|lock timeout|could not obtain lock/.test(text)) && attempt < 5) {
       await new Promise((r) => setTimeout(r, 2000 * attempt));
       continue;
     }
