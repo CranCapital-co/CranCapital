@@ -149,7 +149,8 @@ export default function World() {
 
   // Refresh money and open windows every 30 s so offline sales show up.
   useEffect(() => {
-    const i = setInterval(() => bump(), 30_000);
+    // Less often, and not at all while the game is in the background.
+    const i = setInterval(() => !document.hidden && bump(), 60_000);
     return () => clearInterval(i);
   }, [bump]);
 

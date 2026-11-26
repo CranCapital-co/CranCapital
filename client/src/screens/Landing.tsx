@@ -87,7 +87,7 @@ export default function Landing() {
     let alive = true;
     const load = () => rpc('world_stats').then((s) => alive && setStats(s)).catch(() => alive && setError(true));
     load();
-    const t = setInterval(load, 30_000);
+    const t = setInterval(() => !document.hidden && load(), 60_000);
     return () => {
       alive = false;
       clearInterval(t);

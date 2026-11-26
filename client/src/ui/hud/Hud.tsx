@@ -69,7 +69,7 @@ export function HudMoney() {
     load();
     const i = setInterval(() => {
       tick((x) => x + 1);
-      load();
+      if (!document.hidden) load();
     }, 60_000);
     // Catch up soon after a sale lands.
     let t: any = 0;

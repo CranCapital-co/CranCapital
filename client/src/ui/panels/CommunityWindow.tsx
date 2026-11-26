@@ -95,7 +95,7 @@ function Chat({ initial }: { initial?: number }) {
       if (alive) unsub = u;
       else u();
     });
-    const poll = setInterval(load, 15000);
+    const poll = setInterval(() => !document.hidden && load(), 15000);
     return () => {
       alive = false;
       clearInterval(poll);

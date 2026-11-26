@@ -35,6 +35,8 @@ function friendly(message: string, code?: string): string {
   if (code === 'PGRST202' || /Could not find the function/i.test(message)) return 'The game server is updating. Please refresh in a minute.';
   if (/JWT expired|invalid JWT/i.test(message)) return 'Your session expired. Please sign in again.';
   if (/Failed to fetch|NetworkError|Load failed/i.test(message)) return 'Can’t reach the game server. Check your connection.';
+  if (code === '55P03' || code === '57014' || /lock timeout|statement timeout|canceling statement/i.test(message))
+    return 'The server is busy right now. Please try again in a moment.';
   return message;
 }
 
@@ -43,7 +45,8 @@ function friendly(message: string, code?: string): string {
 export async function rpc<T = any>(fn: string, args: Record<string, unknown> = {}, retry = 1): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
   if (error) {
-    if (retry > 0 && (error.code === '40P01' || /deadlock|could not serialize/i.test(error.message))) {
+    // A deadlock, or a row that was busy for a moment: try once more.
+    if (retry > 0 && (error.code === '40P01' || error.code === '55P03' || /deadlock|could not serialize|lock timeout/i.test(error.message))) {
       await new Promise((r) => setTimeout(r, 250 + Math.random() * 400));
       return rpc<T>(fn, args, retry - 1);
     }

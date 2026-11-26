@@ -112,7 +112,7 @@ export function useWorldState(every = 15000) {
     let alive = true;
     const load = () => rpc<WorldState>('world_state').then((s) => alive && setState(s)).catch(() => {});
     load();
-    const i = setInterval(load, every);
+    const i = setInterval(() => !document.hidden && load(), every);
     joinWorldNews();
     const soon = () => {
       clearTimeout(timer.current);

@@ -21,11 +21,11 @@ type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'world';
 export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const me = useGame((s) => s.me)!;
   const { data, error } = useWorldMap();
-  const world = useWorldState(12000);
-  const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 8000);
+  const world = useWorldState(20000);
+  const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 15000);
   // Where all the troops are, and your ships at sea.
-  const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 10000);
-  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 15000);
+  const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 20000);
+  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 30000);
   const ships = useMemo(
     () => (shipList ?? []).filter((x) => x.status === 'in_transit').map((x) => ({
       id: x.id, from: x.from as [number, number], to: x.to as [number, number], depart: x.depart_at, arrive: x.arrive_at,

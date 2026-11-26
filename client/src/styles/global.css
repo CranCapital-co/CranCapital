@@ -219,3 +219,5 @@ table.list .r { text-align: right; }
 @media (max-width: 720px) {
   .input, select.input, textarea.input, .chat-input input { font-size: 16px; }
 }
+.busy-pill { display: inline-flex; align-items: center; gap: 8px; align-self: center; pointer-events: none; }
+.spinner.small { width: 14px; height: 14px; border-width: 2px; }
