@@ -232,7 +232,7 @@ export class WorldLayer implements CustomLayerInterface {
   setQuality(q: Quality) {
     this.quality = q;
     if (!this.map) return; // applied when the layer is added
-    const pr = Math.min(window.devicePixelRatio || 1, QUALITY[q].pixelRatio, lowPowerDevice() ? (q === 'high' ? 1.5 : 1.25) : 9);
+    const pr = Math.min(window.devicePixelRatio || 1, QUALITY[q].pixelRatio, lowPowerDevice() ? (q === 'high' ? 1.25 : 1) : 9);
     if (Math.abs(this.map.getPixelRatio() - pr) > 0.01) this.map.setPixelRatio(pr);
   }
 
@@ -448,7 +448,7 @@ export class WorldLayer implements CustomLayerInterface {
       }
       if (zoom >= 15) this.drawChars(dt);
       if (close && this.city.walk) {
-        this.crowd.setView(cg.gx, cg.gy, radius, this.hourLevel, LOW_POWER ? Math.round(q.people * 0.7) : q.people, this.eventMult);
+        this.crowd.setView(cg.gx, cg.gy, radius, this.hourLevel, LOW_POWER ? Math.round(q.people * 0.45) : q.people, this.eventMult);
         this.crowd.update(dt);
         this.drawCrowd();
       }
@@ -470,7 +470,10 @@ export class WorldLayer implements CustomLayerInterface {
 
     // Keep animating while there's something moving on screen.
     if (show && !document.hidden && !(window as any).__ccPause3d) {
-      if (q.fps < 60) setTimeout(() => this.map.triggerRepaint(), 1000 / q.fps - 4);
+      // Tablets animate at 30 frames a second at most: half the work, and
+      // the iPad stays cool enough not to slow itself down.
+      const fps = LOW_POWER ? Math.min(30, q.fps) : q.fps;
+      if (fps < 60) setTimeout(() => this.map.triggerRepaint(), 1000 / fps - 4);
       else this.map.triggerRepaint();
     }
   }
@@ -485,6 +488,8 @@ export class WorldLayer implements CustomLayerInterface {
     this.frames = 0;
     this.fpsT = 0;
     if (!this.autoQuality || this.map.getZoom() < 15.5) return;
+    // On a tablet 30 fps is the target, so judge it against that.
+    if (LOW_POWER && this.fps >= 26) return;
     const order: Quality[] = ['saver', 'medium', 'high'];
     const i = order.indexOf(this.quality);
     if (this.fps < 45 && this.quality !== 'saver') {

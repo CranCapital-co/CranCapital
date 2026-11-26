@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { money } from '../../lib/format';
+import { lowPowerDevice } from '../../lib/settings';
+const LOW_POWER = lowPowerDevice();
 import { useSettings } from '../../lib/settings';
 
 // Cash that rolls up smoothly to its new value instead of jumping. Digits are
@@ -71,7 +73,8 @@ export function LiveMoney({ value, perHour, className }: { value: number; perHou
     const cents = Math.abs(perHour) < 36_000_000; // under $10 a second: show the cents ticking
     const draw = (t: number) => {
       raf = requestAnimationFrame(draw);
-      if (t - last < (reduce ? 1000 : 100)) return;
+      // The text changes 10 times a second (4 on a tablet, to save work).
+      if (t - last < (reduce ? 1000 : LOW_POWER ? 250 : 100)) return;
       last = t;
       if (el.current) el.current.textContent = money(Math.round(shownAt(t)), { cents });
     };
