@@ -38,6 +38,14 @@ If you step down, you can lead again after 12 hours. If you are away for 14 days
 - **War score:** grows with the land you occupy and the battles you win.
 - **Peace:** propose a white peace (everyone goes home), demand the land you hold, or demand reparations. You can also surrender, which gives the enemy what they hold and a quarter of your cash. A country that loses all its land falls. Peace brings a 24-hour truce.
 
+**Talking to countries.** Open the **Talk** tab (or tap a country, then **Talk**) and message any country. AI governments always answer, in their own voice, about the world as it is: their wars and alliances, their rank, what they think of you and why.
+
+- **Ask them things:** "Will you ally with us?", "Why won't you ally with us?", "Can we sign a non-aggression pact?", "Will you help me attack France?", "Make me an offer", "How are things?" or "What do you think of us?"
+- **Offers pop up** for you to accept or decline: an alliance, a pact, peace (or peace for a price), a payment for their goodwill (sometimes with a pact or an alliance), or joining your war against a country you name, for a fee.
+- **Personality matters.** Diplomatic and mercantile governments are easy to deal with (mercantile ones will do almost anything for money). Defensive ones are wary. Expansionist and aggressive ones are hard bargainers and expensive.
+- **Manners matter.** Insults and threats lower relations (an aggressive government may denounce you on the spot). Pestering them with lots of messages wears out their patience. Compliments help a little each day, and gifts help a lot.
+- A country led by a player gets your message as a notification.
+
 **Diplomacy.**
 
 - **Envoys:** each costs $2,500 and improves relations.
