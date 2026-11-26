@@ -11,21 +11,22 @@ import { cityName, goodName as catalogGood } from '../lib/store';
 import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, type WorldMapData } from './api';
 import { OverviewTab, MilitaryTab, ResearchTab, DiplomacyTab, WorldTab, UnitChips, type MyNation, type Ctx } from './NationTabs';
 import NationPicker from './NationPicker';
+import { TalkTab } from './TalkTab';
 import { refreshMe } from '../ui/common';
 import './nations.css';
 
 const WorldMap = lazy(() => import('./WorldMap'));
 
-type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'world';
+type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'talk' | 'world';
 
 export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const me = useGame((s) => s.me)!;
-  const { data, error } = useWorldMap();
-  const world = useWorldState(12000);
-  const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 8000);
+  const { data, error, retry } = useWorldMap();
+  const world = useWorldState(20000);
+  const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 15000);
   // Where all the troops are, and your ships at sea.
-  const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 10000);
-  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 15000);
+  const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 20000);
+  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 30000);
   const ships = useMemo(
     () => (shipList ?? []).filter((x) => x.status === 'in_transit').map((x) => ({
       id: x.id, from: x.from as [number, number], to: x.to as [number, number], depart: x.depart_at, arrive: x.arrive_at,
@@ -34,6 +35,8 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
     [shipList]
   );
   const [tab, setTab] = useState<Tab>('nation');
+  const [talkTo, setTalkTo] = useState<string | null>(null);
+  const talk = (id: string) => { setTalkTo(id); setTab('talk'); };
   const [sel, setSel] = useState<string | null>(null);
   const [send, setSend] = useState<{ from: string; to?: string } | null>(null);
   const [wide, setWide] = useState(() => window.innerWidth >= 900);
@@ -81,8 +84,9 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
   return (
     <div className="nations-screen">
       <div className="nations-map">
+        {!data && !error && <div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}
         {data && (
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}>
             <WorldMap
               map={data.map}
               shapes={data.shapes}
@@ -97,7 +101,12 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
             />
           </Suspense>
         )}
-        {error && <div className="notice red picker-error">{error}</div>}
+        {error && (
+          <div className="notice red picker-error row" style={{ justifyContent: 'space-between' }}>
+            <span>{error}</span>
+            <button className="btn small" onClick={retry}>Try again</button>
+          </div>
+        )}
       </div>
 
       <header className="nations-top">
@@ -111,20 +120,29 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
             </span>
           </div>
         )}
-        {world?.era && <span className="hud-pill era-pill tiny"><Icon name="crown" size={16} accent="var(--gold)" /> Era {world.era.number} · {world.wars.length} wars</span>}
+        {world && (
+          <span className="hud-pill era-pill tiny">
+            <Icon name="crown" size={16} accent="var(--gold)" />
+            {world.nations.find((x) => x.id === n?.id)?.rank ? `#${world.nations.find((x) => x.id === n?.id)!.rank} in the world · ` : ''}
+            {world.wars.length} wars
+          </span>
+        )}
+        {n && (world?.coalitions ?? []).some((c) => c.target === n.id) && (
+          <span className="hud-pill era-pill tiny coalition-alert"><Icon name="swords" size={16} /> A coalition is against you</span>
+        )}
       </header>
 
       <aside className={`nations-panel ${wide ? 'side' : 'bottom'}`}>
-        {sel && ctx && <SelectedCard id={sel} ctx={ctx} onClose={() => setSel(null)} />}
+        {sel && ctx && tab !== 'talk' && <SelectedCard id={sel} ctx={ctx} onClose={() => setSel(null)} onTalk={talk} />}
         <div className="tab-sticky">
           <Tabs<Tab>
-            tabs={[['nation', 'Nation'], ['military', 'Military'], ['research', 'Research'], ['diplomacy', `Diplomacy${my?.offers.some((o) => o.incoming) ? ' •' : ''}`], ['world', 'World']]}
+            tabs={[['nation', 'Nation'], ['military', 'Military'], ['research', 'Research'], ['diplomacy', `Diplomacy${my?.offers.some((o) => o.incoming) ? ' •' : ''}`], ['talk', 'Talk'], ['world', 'World']]}
             value={tab}
             onChange={setTab}
           />
         </div>
         <div className="nations-body scroll">
-          {!ctx ? <Loading lines={6} /> : tab === 'nation' ? <OverviewTab {...ctx} /> : tab === 'military' ? <MilitaryTab {...ctx} /> : tab === 'research' ? <ResearchTab {...ctx} /> : tab === 'diplomacy' ? <DiplomacyTab {...ctx} /> : <WorldTab {...ctx} />}
+          {!ctx ? <Loading lines={6} /> : tab === 'nation' ? <OverviewTab {...ctx} /> : tab === 'military' ? <MilitaryTab {...ctx} /> : tab === 'research' ? <ResearchTab {...ctx} /> : tab === 'diplomacy' ? <DiplomacyTab {...ctx} /> : tab === 'talk' ? <TalkTab ctx={ctx} open={talkTo} onOpen={setTalkTo} /> : <WorldTab {...ctx} />}
         </div>
       </aside>
 
@@ -136,7 +154,7 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 // The card for a tapped country
 // ---------------------------------------------------------------------------
-function SelectedCard({ id, ctx, onClose }: { id: string; ctx: Ctx; onClose: () => void }) {
+function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onClose: () => void; onTalk: (id: string) => void }) {
   const { my, map, world, reload, name } = ctx;
   const holder = world?.territories.find((t) => t[0] === id);
   const controller = holder?.[2] ?? id;
@@ -199,6 +217,7 @@ function SelectedCard({ id, ctx, onClose }: { id: string; ctx: Ctx; onClose: () 
               <span className="chip"><Icon name="lock" size={14} /> War at level {my.unlocks.war}</span>
             )
           )}
+          <button className="btn small" onClick={() => onTalk(controller)}><Icon name="chat" size={16} /> Talk</button>
           {!atWar && <button className="btn small ghost" onClick={() => doAct('diplo_envoy', { p_nation: controller }, 'Envoy sent: relations improved.')}><Icon name="mail" size={16} /> Envoy · $2,500</button>}
           {!atWar && !allied && <button className="btn small ghost" onClick={() => doAct('diplo_denounce', { p_nation: controller }, 'Denounced.')}>Denounce</button>}
           {!atWar && !allied && !info?.treaty && level >= (my.unlocks.nap ?? 6) && (

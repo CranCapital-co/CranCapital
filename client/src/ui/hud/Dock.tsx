@@ -3,7 +3,7 @@ import { Icon } from '../Icon';
 
 const EMPIRE = ['empire', 'businesses', 'business', 'property', 'inventory', 'bank'];
 const PEOPLE = ['people', 'community', 'leaderboard', 'profile'];
-const MORE = ['more', 'wiki', 'account', 'mod', 'travel'];
+const MORE = ['more', 'wiki', 'account', 'mod', 'travel', 'admin'];
 
 export function Dock({ glowBuild }: { glowBuild?: boolean }) {
   const win = useGame((s) => s.win);

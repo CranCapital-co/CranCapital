@@ -1,7 +1,7 @@
 // The world map for Nations: every country coloured by whoever holds it,
 // armies on the move, recent battles. Self-contained (shapes ship with the
 // game, labels use our own fonts), so it works without the street-map server.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LOCAL_GLYPHS } from '../map/style';
@@ -48,6 +48,10 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
   onSelectRef.current = onSelect;
 
   const byId = useRef(new Map(data.territories.map((t) => [t.id, t])));
+  // If the map can't draw (an iPad out of graphics memory), offer a retry
+  // instead of a blank screen; each retry builds a fresh map.
+  const [failed, setFailed] = useState(false);
+  const [gen, setGen] = useState(0);
 
   // Paint the countries from the latest state.
   const paint = () => {
@@ -187,7 +191,10 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
 
   useEffect(() => {
     if (!el.current) return;
-    const m = new maplibregl.Map({
+    setFailed(false);
+    let m: MLMap;
+    try {
+    m = new maplibregl.Map({
       container: el.current,
       style: {
         version: 8,
@@ -276,14 +283,34 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       touchPitch: false,
       attributionControl: false,
     });
+    } catch {
+      setFailed(true);
+      return;
+    }
     m.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: 'Natural Earth' }));
     addMapImages(m);
     m.touchZoomRotate.disableRotation();
     mapRef.current = m;
-    m.on('load', () => {
+    // Paint as soon as the style is ready (our data is all local), and
+    // again on 'load', which can come late.
+    const go = () => {
+      if (ready.current) return;
       ready.current = true;
       paint();
+      drawMoves();
+    };
+    m.once('style.load', go);
+    m.on('load', () => {
+      go();
+      paint();
     });
+    if (m.isStyleLoaded()) go();
+    // A real loss of the graphics context (not our own, when the map closes).
+    const onLost = () => setFailed(true);
+    m.getCanvas().addEventListener('webglcontextlost', onLost);
+    m.on('webglcontextrestored', () => setFailed(false));
+    const ro = new ResizeObserver(() => m.resize());
+    ro.observe(el.current);
     m.on('click', (e) => {
       const f = m.queryRenderedFeatures(e.point, { layers: ['fill'] })[0];
       onSelectRef.current?.(f ? String(f.properties?.id) : null);
@@ -294,12 +321,14 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     const anim = setInterval(drawMoves, 250);
     return () => {
       clearInterval(anim);
+      ro.disconnect();
+      m.getCanvas().removeEventListener('webglcontextlost', onLost);
       m.remove();
       mapRef.current = null;
       ready.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gen]);
 
   useEffect(paint, [state, me, selected, targets, mode, troops, ships]);
 
@@ -320,7 +349,17 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     return () => window.removeEventListener('cc:worldfly', on);
   }, []);
 
-  return <div ref={el} className="world-map" />;
+  return (
+    <>
+      <div ref={el} className="world-map" />
+      {failed && (
+        <div className="map-wait">
+          <span>The world map couldn’t draw.</span>
+          <button className="btn small" onClick={() => setGen((g) => g + 1)}>Try again</button>
+        </div>
+      )}
+    </>
+  );
 }
 
 // Badge backgrounds (stretched around the number) and the ship icon, drawn

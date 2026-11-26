@@ -18,10 +18,10 @@ after(async () => { await db.end(); });
 
 test('press everything', { timeout: 300_000 }, async () => {
   const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const errors = [];
   try {
     const ctx = await browser.newContext({ ...devices['iPad Pro 11 landscape'] });
     const page = await ctx.newPage();
-    const errors = [];
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + (e.stack ?? '').split('\n').slice(0, 6).join('\n')));
     page.on('console', (m) => {
       if (m.type() === 'error' && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text());
@@ -122,11 +122,49 @@ test('press everything', { timeout: 300_000 }, async () => {
     await page.locator('.tech:not(.done):not(.locked) button').first().click();
     await page.waitForTimeout(800);
     await shot('4-nation');
+
+    // Talk to a country: it always answers, and its offers pop up.
+    await page.getByRole('tab', { name: 'Talk' }).click();
+    await page.getByPlaceholder('Search countries').fill('a');
+    await page.locator('.nations-body .rel-row').nth(3).click();
+    await page.locator('.talk-head').waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Hello!' }).click();
+    await page.locator('.bubble.theirs:not(.typing)').first().waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Can we sign a non-aggression pact?' }).click();
+    await page.locator('.bubble.theirs:not(.typing)').nth(1).waitFor({ timeout: 15_000 });
+    const offer = page.locator('.modal', { hasText: 'makes an offer' });
+    if (await offer.count()) {
+      await shot('5-offer');
+      await offer.getByRole('button', { name: 'Accept' }).click();
+      await page.locator('.bubble.theirs:not(.typing)').nth(2).waitFor({ timeout: 15_000 });
+    }
+    await page.getByLabel(/^Message /).fill('You are stupid');
+    await page.getByRole('button', { name: /Send/ }).click();
+    await page.locator('.bubble.theirs:not(.typing)').last().waitFor({ timeout: 15_000 });
+    await shot('6-talk');
+    assert.ok(Number((await one('select count(*) c from game.diplo_chat where player_id = $1 and not from_player', [me.id])).c) >= 3, 'they answered every message');
     await page.getByRole('button', { name: 'Back to the city' }).click();
     await page.locator('.renown-badge').waitFor();
 
+    // The admin panel (for admins only).
+    await q(`update game.players set role = 'admin' where id = $1`, [me.id]);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.reload();
+    await page.locator('.renown-badge').waitFor({ timeout: 30_000 });
+    await page.locator('.dock button', { hasText: 'More' }).click();
+    await page.getByRole('button', { name: /^Admin/ }).click();
+    const cashA = Number((await one('select cash from game.players where id = $1', [me.id])).cash);
+    await page.getByRole('button', { name: '+$1M' }).click();
+    await page.getByText(/Gave .* \$1,000,000/).first().waitFor({ timeout: 10_000 });
+    assert.equal(Number((await one('select cash from game.players where id = $1', [me.id])).cash), cashA + 1e9);
+    await page.getByRole('button', { name: '+5 levels' }).click();
+    await page.getByText(/is now level/).first().waitFor({ timeout: 10_000 });
+    await shot('7-admin');
+    await closeWindow(page);
+
     assert.deepEqual(errors, [], 'no console errors');
   } catch (e) {
+    console.log('page errors:', JSON.stringify(errors ?? [], null, 1).slice(0, 3000));
     if (process.env.SHOTS) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: `${process.env.SHOTS}/fail.png` }).catch(() => {});
     throw e;
   } finally {

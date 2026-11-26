@@ -22,8 +22,10 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], every = 0)
         setData(r);
         setError(null);
       }
+      return true;
     } catch (e: any) {
       if (alive.current && id === seq.current) setError(e?.message ?? String(e));
+      return false;
     } finally {
       if (alive.current && id === seq.current) setLoading(false);
     }
@@ -32,12 +34,25 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], every = 0)
   useEffect(() => {
     alive.current = true;
     setLoading(true);
-    load();
-    if (!every) return () => { alive.current = false; };
-    const t = setInterval(load, every);
+    // A first load that fails (a busy server) is retried twice before
+    // the window shows the error.
+    let tries = 0;
+    let retry: any = 0;
+    const first = () =>
+      load().then((ok) => {
+        if (!ok && alive.current && tries++ < 2) retry = setTimeout(first, 1500 * tries);
+      });
+    first();
+    // Polling pauses while the game is in the background, and catches up
+    // when you come back.
+    const onShow = () => { if (!document.hidden && every) load(); };
+    document.addEventListener('visibilitychange', onShow);
+    const t = every ? setInterval(() => { if (!document.hidden) load(); }, every) : 0;
     return () => {
       alive.current = false;
       clearInterval(t);
+      clearTimeout(retry);
+      document.removeEventListener('visibilitychange', onShow);
     };
   }, [load, refreshKey, every]);
   return { data, error, loading, reload: load, setData };
@@ -234,11 +249,25 @@ export function Confirm({ title, body, confirm, danger, onConfirm, onCancel }: {
   );
 }
 
+// A small "Working…" pill when an action takes more than a moment, so a
+// slow server never looks like a button that didn't work.
+function Busy() {
+  const busy = useGame((s) => s.busy > 0);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!busy) return setShow(false);
+    const t = setTimeout(() => setShow(true), 350);
+    return () => clearTimeout(t);
+  }, [busy]);
+  return show ? <div className="toast busy-pill"><span className="spinner small" aria-hidden /> Working…</div> : null;
+}
+
 export function Toasts() {
   const toasts = useGame((s) => s.toasts);
   const dismiss = useGame((s) => s.dismissToast);
   return (
     <div className="toasts" aria-live="polite">
+      <Busy />
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`} onClick={() => dismiss(t.id)}>
           {t.text}

@@ -362,8 +362,14 @@ export default function Play() {
         /* offline for a moment */
       }
     };
-    const t = setInterval(beat, 45_000);
-    return () => clearInterval(t);
+    // Not while the game is in the background; straight away on return.
+    const t = setInterval(() => !document.hidden && beat(), 45_000);
+    const onShow = () => !document.hidden && beat();
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onShow);
+    };
   }, [me?.id]);
 
   if (!BACKEND_READY) {

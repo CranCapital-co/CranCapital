@@ -817,7 +817,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
             : '3D layer not loaded';
         }, 500)
       : 0;
-    const poll = setInterval(refreshData, 20_000);
+    const poll = setInterval(() => !document.hidden && refreshData(), 40_000);
 
     return () => {
       destroyed = true;

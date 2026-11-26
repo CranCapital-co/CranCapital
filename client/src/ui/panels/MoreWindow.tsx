@@ -25,6 +25,7 @@ export default function MoreWindow() {
         {row('skyline', 'Cities', 'Switch to another city, instantly', () => open('travel'))}
         {row('bell', 'Notifications', 'Everything that happened while you were busy', () => open('notifications'))}
         {row('camera', 'Photo mode', 'Hide the interface, set the time of day, save a picture', () => window.dispatchEvent(new CustomEvent('cc:photo')))}
+        {me.role === 'admin' && row('crown', 'Admin', 'Cheats: money, levels, troops, research, finish everything', () => open('admin'))}
         {me.role !== 'player' && row('staff', 'Staff', 'Reports, moderation and events', () => open('mod'))}
         <div className="card soft row between">
           <span className="row">

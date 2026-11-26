@@ -50,4 +50,9 @@ If you step down, you can lead again after 12 hours. If you are away for 14 days
 - **Skill:** from Novice to Mastermind. A Mastermind judges strength well, moves troops to threatened borders, builds forts, mixes unit types and counts your allies before it attacks. A Novice misjudges and keeps its army at home.
 - **Personality:** aggressive, expansionist, balanced, defensive, diplomatic or mercantile.
 
-**World domination.** A nation that holds 50% of the world's value (economy, people and land) wins the era. If nobody does, the strongest nation wins when the era ends after 90 days. The winner enters the Hall of Fame. Then the map resets and every leader starts again from their homeland.
+**A world that never resets.** There are no eras and no winner's reset: the map carries on for good. The world fights back against anyone who grows too big:
+
+- **The top five:** every five minutes each country gets a world rank. AI governments look at the top five first when they choose a war, accept slightly worse odds against them (others will join in), and won't sign alliances or pacts with a big power.
+- **Coalitions:** a country that grows to 12% of the world by conquest (at least 8 points more than its own homeland is worth, so big countries aren't punished just for being big) faces a coalition. Its AI neighbours band together first; their neighbours join at 18%; every AI joins at 25%. Members stop fighting each other, join each other's wars against the target, refuse it easy peace and run a war economy. The coalition disbands when the target shrinks back.
+
+Conquering the world is still possible, but very hard.

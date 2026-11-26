@@ -5,7 +5,7 @@ import { sound } from '../audio/sound';
 
 export type WindowId =
   | 'businesses' | 'business' | 'property' | 'build' | 'market' | 'bank' | 'inventory' | 'community'
-  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod'
+  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod' | 'admin'
   | 'empire' | 'people' | 'more' | 'progress';
 
 // Windows that now live as tabs inside the five dock windows.
@@ -58,6 +58,7 @@ interface State {
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
   bump: () => void;
+  busy: number; // game actions waiting for the server
 }
 
 let toastId = 0;
@@ -77,6 +78,7 @@ export const useGame = create<State>((set, get) => ({
   pos: null,
   inside: null,
   refreshKey: 0,
+  busy: 0,
   set: (p) => set(p),
   open: (id, params) => {
     const home = TAB_HOME[id];
@@ -110,6 +112,8 @@ export const useGame = create<State>((set, get) => ({
 // Run a game action with error toasts; returns undefined on failure.
 export async function act<T>(fn: () => Promise<T>, success?: string | ((r: T) => string | undefined)): Promise<T | undefined> {
   const g = useGame.getState();
+  // Counted, so the HUD can show "Working…" if the server is slow to answer.
+  useGame.setState((s) => ({ busy: s.busy + 1 }));
   try {
     const r = await fn();
     const msg = typeof success === 'function' ? success(r) : success;
@@ -118,6 +122,8 @@ export async function act<T>(fn: () => Promise<T>, success?: string | ((r: T) =>
   } catch (e: any) {
     g.toast(e?.message || String(e), 'error');
     return undefined;
+  } finally {
+    useGame.setState((s) => ({ busy: Math.max(0, s.busy - 1) }));
   }
 }
 

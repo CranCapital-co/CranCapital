@@ -87,3 +87,33 @@
 .news-row.peace .icon, .news-row.pact .icon, .news-row.alliance .icon { color: var(--good); }
 
 .army-row { width: 100%; text-align: left; background: var(--bg-2); border: 0; border-radius: 12px; padding: 8px 10px; color: var(--ink); cursor: pointer; gap: 6px; }
+.map-wait { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; gap: 12px; color: #e8f1f4; font-weight: 600; background: #0d2633; }
+.coalition-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.coalition-row.against-me { color: var(--bad); font-weight: 600; }
+.coalition-alert { background: color-mix(in srgb, var(--bad) 85%, #000); color: #fff; }
+
+/* Talk to countries */
+.talk { display: flex; flex-direction: column; gap: 8px; min-height: 100%; }
+.talk-head { display: flex; align-items: center; gap: 10px; position: sticky; top: -12px; z-index: 2; background: var(--panel-solid); padding: 6px 0; border-bottom: 1px solid var(--line); }
+.talk-rel { position: relative; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.talk-rel.pulse { animation: rel-pulse 0.6s ease-out 2; }
+.talk-flash { position: absolute; right: 0; top: -16px; font-size: 12px; animation: rel-rise 2s ease-out forwards; }
+@keyframes rel-pulse { 50% { transform: scale(1.12); } }
+@keyframes rel-rise { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-14px); } }
+.talk-persona { margin: 0; }
+.talk-log { display: flex; flex-direction: column; gap: 8px; flex: 1; padding: 4px 0; }
+.bubble { display: flex; flex-direction: column; gap: 3px; max-width: 85%; padding: 8px 12px; border-radius: 16px; font-size: 14px; line-height: 1.35; }
+.bubble.mine { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+.bubble.theirs { align-self: flex-start; background: var(--bg-2); color: var(--ink); border-bottom-left-radius: 4px; }
+.bubble.mood-hostile { box-shadow: inset 3px 0 0 var(--bad); }
+.bubble.mood-cold { box-shadow: inset 3px 0 0 var(--gold); }
+.bubble.mood-friendly { box-shadow: inset 3px 0 0 var(--good); }
+.bubble.typing { flex-direction: row; gap: 4px; padding: 12px 14px; }
+.bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: typing-dot 1s infinite ease-in-out; }
+.bubble.typing span:nth-child(2) { animation-delay: 0.15s; }
+.bubble.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.offer-card { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 8px; border-radius: 10px; background: var(--panel-solid); border: 1px solid color-mix(in srgb, var(--gold) 50%, var(--line)); }
+.talk-suggest { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.talk-suggest .chip { white-space: nowrap; }
+.talk-input { display: flex; gap: 8px; position: sticky; bottom: -20px; background: var(--panel-solid); padding: 6px 0; }

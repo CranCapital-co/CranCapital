@@ -556,19 +556,25 @@ export function WorldTab({ my, world, name, select }: Ctx) {
   const myRank = ranks?.powers?.findIndex((p: any) => p.id === my.nation?.id);
   return (
     <div className="stack">
-      {world?.era && (
-        <section className="card stack">
-          <div className="row between"><strong className="row"><Icon name="crown" size={18} accent="var(--gold)" /> Era {world.era.number}</strong><span className="tiny muted">ends in {untilLong(world.era.ends_at)}</span></div>
-          {top && (
-            <>
-              <div className="small">Closest to world domination: <button className="link" onClick={() => select(top.id)}>{top.name}</button>, holding {top.share}% of the world.</div>
-              <Bar value={top.share} max={50} tone="var(--coral)" />
-              <p className="tiny muted" style={{ margin: 0 }}>Hold 50% of the world’s value (economy, people and land) to win the era. If nobody does, the strongest nation wins when it ends. Then the map resets and every leader starts again from their homeland.</p>
-            </>
-          )}
-          {my.nation && <div className="small">You: {my.nation.share}% of the world{myRank != null && myRank >= 0 ? ` · #${myRank + 1} in power` : ''}</div>}
-        </section>
-      )}
+      <section className="card stack">
+        <strong className="row"><Icon name="crown" size={18} accent="var(--gold)" /> Balance of power</strong>
+        {top && (
+          <>
+            <div className="small">Biggest power: <button className="link" onClick={() => select(top.id)}>{top.name}</button>, holding {top.share}% of the world.</div>
+            <Bar value={top.share} max={100} tone="var(--coral)" />
+          </>
+        )}
+        {(world?.coalitions ?? []).map((c) => (
+          <div key={c.id} className={`small coalition-row ${c.target === my.nation?.id ? 'against-me' : ''}`}>
+            <Icon name="swords" size={16} /> <b>{(c.members ?? []).length} countries</b> have formed a coalition against{' '}
+            <button className="link" onClick={() => select(c.target)}>{c.target === my.nation?.id ? 'you' : name(c.target)}</button>.
+          </div>
+        ))}
+        <p className="tiny muted" style={{ margin: 0 }}>
+          The world never resets. AI governments keep the top five powers in their sights, and when a country grows to 12% of the world by conquest, its neighbours band together against it. Conquering the world is possible, but very hard.
+        </p>
+        {my.nation && <div className="small">You: {my.nation.share}% of the world{myRank != null && myRank >= 0 ? ` · #${myRank + 1} in power` : ''}</div>}
+      </section>
       <section className="card stack">
         <strong className="row"><Icon name="trophy" size={18} accent="var(--gold)" /> World powers</strong>
         {!ranks && <Loading />}
@@ -592,7 +598,7 @@ export function WorldTab({ my, world, name, select }: Ctx) {
         {!news && <Loading />}
         {(news ?? []).map((x: any) => (
           <div key={x.id} className={`news-row ${x.kind}`}>
-            <Icon name={x.kind === 'war' || x.kind === 'battle' ? 'swords' : x.kind === 'peace' || x.kind === 'pact' ? 'dove' : x.kind === 'alliance' ? 'handshake' : x.kind === 'fallen' ? 'flag' : x.kind === 'era' ? 'crown' : 'globe'} size={16} />
+            <Icon name={x.kind === 'war' || x.kind === 'battle' ? 'swords' : x.kind === 'peace' || x.kind === 'pact' ? 'dove' : x.kind === 'alliance' ? 'handshake' : x.kind === 'fallen' ? 'flag' : x.kind === 'coalition' ? 'swords' : x.kind === 'era' ? 'crown' : 'globe'} size={16} />
             <span className="grow"><b>{x.title}</b>{x.body && <span className="tiny muted"> {x.body}</span>}</span>
             <span className="tiny muted">{ago(x.at)}</span>
           </div>

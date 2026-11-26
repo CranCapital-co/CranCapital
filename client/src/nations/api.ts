@@ -1,7 +1,7 @@
 // Nations: what the server tells us about the world, cached and kept fresh.
 import { useEffect, useRef, useState } from 'react';
 import { feature } from 'topojson-client';
-import { rpc, supabase } from '../lib/supabase';
+import { retrying, rpc, supabase } from '../lib/supabase';
 import { useGame } from '../lib/store';
 
 export interface Territory {
@@ -29,13 +29,14 @@ export interface NationLite {
   id: string; name: string; color: string; status: 'active' | 'fallen';
   leader: { no: number; name: string; skin: string } | null;
   skill: number; skill_name: string; personality: string; power: number; share: number;
-  alliance: number | null; protected: boolean; stability: number;
+  alliance: number | null; protected: boolean; stability: number; rank?: number | null;
 }
 export interface WarLite { id: number; name: string; attacker: string; defender: string; score: number; started_at: string; att: string[]; def: string[] }
 export interface MoveLite { id: number; nation: string; from: string; to: string; kind: 'move' | 'attack' | 'raid' | 'missile'; depart_at: string; arrive_at: string }
 export interface WorldState {
   at: string;
-  era: { number: number; started_at: string; ends_at: string } | null;
+  era?: null; // eras are gone: the world never resets
+  coalitions?: { id: number; target: string; formed_at: string; members: string[] | null }[];
   territories: [string, string, string][];
   nations: NationLite[];
   alliances: { id: number; name: string; color: string; founder: string; members: string[] }[];
@@ -69,14 +70,17 @@ export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
 export function useWorldMap() {
   const [data, setData] = useState<{ map: WorldMapData; shapes: GeoJSON.FeatureCollection } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    Promise.all([loadWorldMap(), loadShapes()])
+    setError(null);
+    // A busy server or a flaky connection: try a few times before giving up.
+    retrying(() => Promise.all([loadWorldMap(), loadShapes()]), 3, 20000)
       .then(([map, shapes]) => alive && setData({ map, shapes }))
       .catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, []);
-  return { data, error };
+  }, [attempt]);
+  return { data, error, retry: () => setAttempt((x) => x + 1) };
 }
 
 // Live world: polled, and refreshed sooner when the server broadcasts news.
@@ -112,7 +116,7 @@ export function useWorldState(every = 15000) {
     let alive = true;
     const load = () => rpc<WorldState>('world_state').then((s) => alive && setState(s)).catch(() => {});
     load();
-    const i = setInterval(load, every);
+    const i = setInterval(() => !document.hidden && load(), every);
     joinWorldNews();
     const soon = () => {
       clearTimeout(timer.current);
