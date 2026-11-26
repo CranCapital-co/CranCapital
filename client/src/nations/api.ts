@@ -1,7 +1,7 @@
 // Nations: what the server tells us about the world, cached and kept fresh.
 import { useEffect, useRef, useState } from 'react';
 import { feature } from 'topojson-client';
-import { rpc, supabase } from '../lib/supabase';
+import { retrying, rpc, supabase } from '../lib/supabase';
 import { useGame } from '../lib/store';
 
 export interface Territory {
@@ -69,14 +69,17 @@ export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
 export function useWorldMap() {
   const [data, setData] = useState<{ map: WorldMapData; shapes: GeoJSON.FeatureCollection } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    Promise.all([loadWorldMap(), loadShapes()])
+    setError(null);
+    // A busy server or a flaky connection: try a few times before giving up.
+    retrying(() => Promise.all([loadWorldMap(), loadShapes()]), 3, 20000)
       .then(([map, shapes]) => alive && setData({ map, shapes }))
       .catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, []);
-  return { data, error };
+  }, [attempt]);
+  return { data, error, retry: () => setAttempt((x) => x + 1) };
 }
 
 // Live world: polled, and refreshed sooner when the server broadcasts news.

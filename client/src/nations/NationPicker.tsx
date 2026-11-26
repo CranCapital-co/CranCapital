@@ -14,7 +14,7 @@ const WorldMap = lazy(() => import('./WorldMap'));
 type Sort = 'power' | 'name' | 'pop';
 
 export default function NationPicker({ onDone, onLater }: { onDone: (me: Me) => void; onLater?: () => void }) {
-  const { data, error } = useWorldMap();
+  const { data, error, retry } = useWorldMap();
   const state = useWorldState(20000);
   const [sel, setSel] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -74,7 +74,13 @@ export default function NationPicker({ onDone, onLater }: { onDone: (me: Me) => 
             <WorldMap map={data.map} shapes={data.shapes} state={state} selected={sel} onSelect={setSel} mode="picker" />
           </Suspense>
         )}
-        {error && <div className="notice red picker-error">{error}</div>}
+        {!data && !error && <div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}
+        {error && (
+          <div className="notice red picker-error row" style={{ justifyContent: 'space-between' }}>
+            <span>{error}</span>
+            <button className="btn small" onClick={retry}>Try again</button>
+          </div>
+        )}
       </div>
       <aside className="picker-panel">
         <header className="stack" style={{ gap: 6 }}>

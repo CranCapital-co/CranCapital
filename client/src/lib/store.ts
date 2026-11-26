@@ -5,7 +5,7 @@ import { sound } from '../audio/sound';
 
 export type WindowId =
   | 'businesses' | 'business' | 'property' | 'build' | 'market' | 'bank' | 'inventory' | 'community'
-  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod'
+  | 'leaderboard' | 'wiki' | 'account' | 'profile' | 'travel' | 'notifications' | 'mod' | 'admin'
   | 'empire' | 'people' | 'more' | 'progress';
 
 // Windows that now live as tabs inside the five dock windows.

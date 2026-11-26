@@ -20,7 +20,7 @@ type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'world';
 
 export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const me = useGame((s) => s.me)!;
-  const { data, error } = useWorldMap();
+  const { data, error, retry } = useWorldMap();
   const world = useWorldState(20000);
   const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 15000);
   // Where all the troops are, and your ships at sea.
@@ -81,8 +81,9 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
   return (
     <div className="nations-screen">
       <div className="nations-map">
+        {!data && !error && <div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}
         {data && (
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}>
             <WorldMap
               map={data.map}
               shapes={data.shapes}
@@ -97,7 +98,12 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
             />
           </Suspense>
         )}
-        {error && <div className="notice red picker-error">{error}</div>}
+        {error && (
+          <div className="notice red picker-error row" style={{ justifyContent: 'space-between' }}>
+            <span>{error}</span>
+            <button className="btn small" onClick={retry}>Try again</button>
+          </div>
+        )}
       </div>
 
       <header className="nations-top">

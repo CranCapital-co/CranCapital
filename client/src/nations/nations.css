@@ -87,3 +87,4 @@
 .news-row.peace .icon, .news-row.pact .icon, .news-row.alliance .icon { color: var(--good); }
 
 .army-row { width: 100%; text-align: left; background: var(--bg-2); border: 0; border-radius: 12px; padding: 8px 10px; color: var(--ink); cursor: pointer; gap: 6px; }
+.map-wait { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; gap: 12px; color: #e8f1f4; font-weight: 600; background: #0d2633; }

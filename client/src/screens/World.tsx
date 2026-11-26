@@ -32,6 +32,7 @@ const ProfileWindow = lazy(() => import('../ui/panels/ProfileWindow'));
 const TravelWindow = lazy(() => import('../ui/panels/TravelWindow'));
 const NotificationsWindow = lazy(() => import('../ui/panels/NotificationsWindow'));
 const ModWindow = lazy(() => import('../ui/panels/ModWindow'));
+const AdminWindow = lazy(() => import('../ui/panels/AdminWindow'));
 const EmpireWindow = lazy(() => import('../ui/panels/EmpireWindow'));
 const PeopleWindow = lazy(() => import('../ui/panels/PeopleWindow'));
 const MoreWindow = lazy(() => import('../ui/panels/MoreWindow'));
@@ -54,6 +55,7 @@ const WINDOWS: Record<string, React.ComponentType<any>> = {
   travel: TravelWindow,
   notifications: NotificationsWindow,
   mod: ModWindow,
+  admin: AdminWindow,
   empire: EmpireWindow,
   people: PeopleWindow,
   more: MoreWindow,
