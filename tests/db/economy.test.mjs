@@ -60,11 +60,13 @@ test('buying a cart on a street, first sales, ledger stays exact', async () => {
   assert.ok(badge);
 });
 
-test('carts cannot teleport across the city', async () => {
+test('no walking: a cart goes anywhere in your city by tapping, but not outside it', async () => {
   const { client } = await newPlayer('Teleport');
   const far = await streetNear('london', 51.522, -0.08);
-  const err = await rpcError(client, 'buy_cart', { p_name: 'Far', p_lat: far.lat, p_lng: far.lng });
-  assert.match(err, /Walk to that spot/);
+  const { business_id } = await rpc(client, 'buy_cart', { p_name: 'Far', p_lat: far.lat, p_lng: far.lng });
+  assert.ok(business_id, 'bought a cart across town without walking there');
+  assert.ok(await rpcError(client, 'buy_cart', { p_name: 'Paris', p_lat: 48.8566, p_lng: 2.3522 }), 'not outside the city');
+  assert.match(await rpcError(client, 'taxi', { p_lat: far.lat, p_lng: far.lng }), /no taxis/);
 });
 
 test('menus: prices and items are validated', async () => {

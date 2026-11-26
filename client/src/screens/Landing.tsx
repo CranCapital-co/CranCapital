@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { rpc, BACKEND_READY } from '../lib/supabase';
 import { money, num, pct, unitPrice } from '../lib/format';
-import { Footer } from './Pages';
+import { Footer } from './Footer';
 import '../styles/landing.css';
 import { GoodIcon, Icon } from '../ui/Icon';
 import LandingHero from './LandingHero';

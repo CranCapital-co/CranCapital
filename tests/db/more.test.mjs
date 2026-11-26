@@ -106,6 +106,10 @@ test('contracts: deposit, deliver for more than market, no goods no pay, no doub
 
 test('city projects: give goods for a thank-you, capped at what it needs, then it opens and lifts foot traffic', async () => {
   const a = await withCart('Builder');
+  // An earlier run may have finished London's first project: open it again.
+  const first = `(select min(id) from game.city_projects where city_id = 'london')`;
+  await q(`delete from game.project_contributions where project_id = ${first}`);
+  await q(`update game.city_projects set status = 'open', given = '{}', completed_at = null where id = ${first}`);
   const proj = (await rpc(a.client, 'city_projects', { p_city: 'london' }))[0];
   assert.equal(proj.status, 'open');
   // Shrink the project so the test can finish it.

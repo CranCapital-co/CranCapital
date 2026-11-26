@@ -23,7 +23,7 @@ Shipping takes 8 minutes, plus about 1 minute for every 600 km.
 
 Freight costs 2% of the goods' base value, plus a little more for distance. A 10,000 km trip costs about 4.5% in total.
 
-You pay freight when the ship leaves.
+You pay freight when the ship leaves. You can watch it go: the ship sails out of your port on the city map, and you can follow it across the sea on the world map (the **Nation** button) until it arrives.
 
 A port can load 50,000 units an hour per level. Upgrade it to ship more.
 

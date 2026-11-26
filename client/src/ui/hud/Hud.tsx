@@ -7,7 +7,7 @@ import { useIncome, incomePerHour } from '../../lib/income';
 import { sound } from '../../audio/sound';
 import { Avatar } from '../components';
 import { Icon } from '../Icon';
-import { RollingMoney } from './RollingNumber';
+import { LiveMoney, PerSecond } from './RollingNumber';
 import type { Me } from '../../lib/types';
 
 const TIER_COLORS: Record<number, string> = { 1: '#e3694d', 2: '#2f8f6e', 3: '#6c9a3d', 4: '#8a6b4a', 5: '#4b6a8c', 6: '#6b4b8c' };
@@ -92,14 +92,12 @@ export function HudMoney() {
         <TierRing me={me} />
       </button>
       <button className="hud-money-text" onClick={() => setShowWorth(!showWorth)} aria-label="Show net worth or income">
-        <RollingMoney value={ffCash ?? me.cash} className="hud-cash" />
+        <LiveMoney value={ffCash ?? me.cash} perHour={rate ?? 0} className="hud-cash" />
         <span className="hud-sub tnum">
           {showWorth ? (
             <>Net worth {money(me.net_worth, { compact: true })}{next ? ` · next tier at ${money(next.net_worth, { compact: true })}` : ''}</>
-          ) : rate != null && rate > 0 ? (
-            <span className="up">
-              <Icon name="trendUp" size={13} /> +{money(rate, { cents: false })} an hour
-            </span>
+          ) : rate ? (
+            <PerSecond perHour={rate} />
           ) : (
             <>Net worth {money(me.net_worth, { compact: true })}</>
           )}

@@ -15,14 +15,14 @@ export interface PartOpts {
 
 const tmpColor = new THREE.Color();
 
-function finish(g: THREE.BufferGeometry, color: Color, o: PartOpts = {}): THREE.BufferGeometry {
+function finish(g: THREE.BufferGeometry, color: Color, o: PartOpts = {}, smooth = false): THREE.BufferGeometry {
   let geo = g.index ? g.toNonIndexed() : g;
   geo.deleteAttribute('uv');
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...(o.rot ?? [0, 0, 0])));
   m.compose(new THREE.Vector3(...(o.at ?? [0, 0, 0])), q, new THREE.Vector3(...(o.scale ?? [1, 1, 1])));
   geo.applyMatrix4(m);
-  geo.computeVertexNormals();
+  if (!smooth || !geo.getAttribute('normal')) geo.computeVertexNormals(); // flat facets, unless kept round
   tmpColor.set(color); // Three converts the sRGB hex to linear itself
   const n = geo.getAttribute('position').count;
   const c = new Float32Array(n * 3);
@@ -77,6 +77,11 @@ export function cone(r: number, h: number, color: Color, o: PartOpts = {}, seg =
 export function ball(r: number, color: Color, o: PartOpts = {}, detail = 0) {
   const g = new THREE.IcosahedronGeometry(r, detail);
   return finish(g, color, o);
+}
+
+// A smooth sphere: keeps its own normals, so it shades round, not faceted.
+export function sphere(r: number, color: Color, o: PartOpts = {}, w = 14, h = 10) {
+  return finish(new THREE.SphereGeometry(r, w, h), color, o, true);
 }
 
 // A gable roof (triangular prism) of width w (x), depth d (z), height h.

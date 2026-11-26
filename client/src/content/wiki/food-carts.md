@@ -4,7 +4,7 @@ A food cart is your first business. It costs $5,000 and parks on any street or p
 
 ## Parking your cart
 
-- Walk to the spot first. You must stand within 25 metres of it.
+- Tap **Build**, then **Choose a spot**, then tap the street where you want it.
 - Carts park on streets and paths, not inside buildings or on water.
 - Two carts can't park closer than 12 metres to each other.
 - Busy spots sell more. Look near stations, sights and shops.

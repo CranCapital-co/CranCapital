@@ -7,8 +7,8 @@ Everyone plays in the same world. The streets and buildings are real places in L
 ## Your first ten minutes
 
 1. Pick a city. Your first arrival is free.
-2. Walk your avatar to a busy street. Stations, sights and shopping streets have the most foot traffic.
-3. Buy a food cart for $5,000 and park it. You start with $10,000, so half is left for stock.
+2. Find a busy street. Stations, sights and shopping streets have the most foot traffic.
+3. Tap **Build**, choose a spot and tap the street to park a $5,000 food cart. You start with $10,000, so half is left for stock.
 4. Check the menu. A new cart sells Garden Salad, Hot Chips and Onigiri at their fair prices.
 5. Watch the first sales come in. Your first cart comes with free starter stock.
 6. Open the exchange and buy more ingredients before storage runs low.
@@ -42,7 +42,8 @@ Your net worth unlocks new kinds of business. The first goal is $20,000, which o
 
 - In-game money has no real-world value. You can't buy it and you can't cash it out.
 - Your businesses keep selling for up to 24 hours after you were last online.
-- The game never asks for your real location. Your position is only where your avatar stands.
+- The game never asks for your real location.
+- Your money counter ticks up every second with what your businesses (and your country) earn. The green line under it shows how much a second.
 - You can run up to 5 carts at once.
 
 ## Where to read next

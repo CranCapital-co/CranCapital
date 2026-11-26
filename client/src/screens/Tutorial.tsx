@@ -1,5 +1,5 @@
 // Tutorial Island: a small made-up practice town, simulated entirely in the
-// browser. Teaches walking, placing a cart, setting a menu and prices, and
+// browser. Teaches placing a cart, setting a menu and prices, and
 // selling to passing crowds. No account or server needed.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
@@ -135,18 +135,18 @@ function Pip({ size = 64 }: { size?: number }) {
 }
 
 const DISHES = [
-  { id: 'salad', name: 'Garden Salad', icon: '🥗', fair: 4000, ing: { lettuce: 3, tomato: 2 } },
-  { id: 'chips', name: 'Hot Chips', icon: '🍟', fair: 3500, ing: { potato: 3 } },
-  { id: 'onigiri', name: 'Onigiri', icon: '🍙', fair: 3000, ing: { rice: 2, wasabi: 1 } },
-  { id: 'soup', name: 'Pumpkin Soup', icon: '🍲', fair: 4500, ing: { pumpkin: 2 } },
-  { id: 'smoothie', name: 'Banana Smoothie', icon: '🥤', fair: 4500, ing: { banana: 3 } },
+  { id: 'salad', name: 'Garden Salad', icon: '🥗', fair: 12000, ing: { lettuce: 3, tomato: 2 } },
+  { id: 'chips', name: 'Hot Chips', icon: '🍟', fair: 10500, ing: { potato: 3 } },
+  { id: 'onigiri', name: 'Onigiri', icon: '🍙', fair: 9000, ing: { rice: 2, wasabi: 1 } },
+  { id: 'soup', name: 'Pumpkin Soup', icon: '🍲', fair: 13500, ing: { pumpkin: 2 } },
+  { id: 'smoothie', name: 'Banana Smoothie', icon: '🥤', fair: 13500, ing: { banana: 3 } },
 ];
 const GOODS: Record<string, { name: string; price: number }> = {
   lettuce: { name: 'Lettuce', price: 88 }, tomato: { name: 'Tomato', price: 132 }, potato: { name: 'Potato', price: 77 },
   rice: { name: 'Rice', price: 99 }, wasabi: { name: 'Wasabi', price: 66 }, pumpkin: { name: 'Pumpkins', price: 363 }, banana: { name: 'Banana', price: 165 },
 };
 
-type Step = 'intro' | 'walk' | 'place' | 'menu' | 'sell' | 'price' | 'restock' | 'done';
+type Step = 'intro' | 'place' | 'menu' | 'sell' | 'price' | 'restock' | 'done';
 
 export default function Tutorial() {
   const el = useRef<HTMLDivElement>(null);
@@ -155,9 +155,9 @@ export default function Tutorial() {
   const [cash, setCash] = useState(10_000_000);
   const [cart, setCart] = useState<{ x: number; y: number } | null>(null);
   const [menu, setMenu] = useState<{ id: string; price: number }[]>([
-    { id: 'salad', price: 4000 },
-    { id: 'chips', price: 3500 },
-    { id: 'onigiri', price: 3000 },
+    { id: 'salad', price: 12000 },
+    { id: 'chips', price: 10500 },
+    { id: 'onigiri', price: 9000 },
   ]);
   const [stock, setStock] = useState<Record<string, number>>({ lettuce: 120, tomato: 80, potato: 120, rice: 80, wasabi: 40, pumpkin: 80, banana: 90 });
   const [sales, setSales] = useState({ count: 0, revenue: 0 });
@@ -232,26 +232,7 @@ export default function Tutorial() {
       }
       if (map.isStyleLoaded()) {
         set('peds', { type: 'FeatureCollection', features: peds.map((q) => { const [a, b] = ROADS[q.r]; return pt(a[0] + (b[0] - a[0]) * q.t + (q.d > 0 ? 3 : -3), a[1] + (b[1] - a[1]) * q.t, { c: q.c }); }) });
-        const s = state.current;
-        if (s.target) {
-          const dx = s.target.x - s.pos.x;
-          const dy = s.target.y - s.pos.y;
-          const d = Math.hypot(dx, dy);
-          const step = 70 * dt;
-          if (d <= step) {
-            s.pos = { ...s.target };
-            s.target = null;
-            if (stepRef.current === 'walk' && Math.hypot(s.pos.x - TARGET.x, s.pos.y - TARGET.y) < 30) setStep('place');
-          } else {
-            s.pos = { x: s.pos.x + (dx / d) * step, y: s.pos.y + (dy / d) * step };
-            // The camera eases after you as you walk.
-            const c = map.getCenter();
-            const [lng, lat] = p(s.pos.x, s.pos.y);
-            const k = Math.min(1, dt * 2.2);
-            if (!map.isMoving()) map.jumpTo({ center: [c.lng + (lng - c.lng) * k, c.lat + (lat - c.lat) * k] });
-          }
-        }
-        set('me', { type: 'FeatureCollection', features: [pt(s.pos.x, s.pos.y)] });
+        set('me', { type: 'FeatureCollection', features: [] });
       }
     };
     map.on('load', async () => {
@@ -260,11 +241,7 @@ export default function Tutorial() {
       try {
         const { WorldLayer } = await import('../world3d/WorldLayer');
         if (!mapRef.current) return;
-        const w = new WorldLayer(tutorialCity(), () => {
-          const s = state.current;
-          const [lng, lat] = p(s.pos.x, s.pos.y);
-          return { key: 'me', lat, lng, skin: 'classic', ring: '#cfd6dc', double: false, skinTone: 1, moving: !!s.target };
-        });
+        const w = new WorldLayer(tutorialCity(), () => null); // no character
         map.addLayer(w, 'labels');
         w.setQuality(useSettings.getState().quality);
         w.onPaid = (_b, amount) => {
@@ -289,10 +266,6 @@ export default function Tutorial() {
       const { x, y } = toXY(e.lngLat.lng, e.lngLat.lat);
       if (stepRef.current === 'place') {
         if (!onStreet(x, y)) return void flash('Carts go on streets: tap a road or the square.');
-        if (Math.hypot(x - state.current.pos.x, y - state.current.pos.y) > 60) {
-          state.current.target = { x, y };
-          return void flash('Walk closer first: you need to stand where you park.');
-        }
         setCart({ x, y });
         setCash((c) => c - 5_000_000);
         const w = worldRef.current;
@@ -308,7 +281,6 @@ export default function Tutorial() {
         setStep('menu');
         return;
       }
-      if (stepRef.current !== 'intro') state.current.target = { x, y };
     });
     return () => {
       cancelAnimationFrame(raf);
@@ -326,8 +298,8 @@ export default function Tutorial() {
     const map = mapRef.current;
     if (!map) return;
     const tgt = map.getSource('target') as GeoJSONSource | undefined;
-    if (step === 'walk' && tgt) tgt.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p(TARGET.x, TARGET.y) } }] });
-    if (step === 'walk') map.easeTo({ center: p(-60, 0), duration: 800 });
+    if (step === 'place' && tgt) tgt.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p(TARGET.x, TARGET.y) } }] });
+    if (step === 'place') map.easeTo({ center: p(-60, 0), duration: 800 });
   }, [step]);
 
   // Selling: a lunchtime rush, sped up. Same price rules as the real game.
@@ -424,27 +396,20 @@ export default function Tutorial() {
         {step === 'intro' && (
           <>
             <h2>Welcome to Tutorial Island</h2>
-            <p>This is a practice town. In three minutes you’ll learn to walk, park a food cart, set a menu and sell to the lunchtime crowd. Nothing here is real money.</p>
-            <button className="btn gold" onClick={() => setStep('walk')}>Let’s go</button>
-          </>
-        )}
-        {step === 'walk' && (
-          <>
-            <span className="chip">Step 1 of 5</span>
-            <h3>Walk to the market square</h3>
-            <p>Tap the glowing spot (or anywhere) to walk there. In the real game you walk around real streets to find busy spots.</p>
+            <p>This is a practice town. In three minutes you’ll learn to park a food cart, set a menu and sell to the lunchtime crowd. Nothing here is real money.</p>
+            <button className="btn gold" onClick={() => setStep('place')}>Let’s go</button>
           </>
         )}
         {step === 'place' && (
           <>
-            <span className="chip">Step 2 of 5</span>
+            <span className="chip">Step 1 of 4</span>
             <h3>Park your cart</h3>
-            <p>Tap a street or the square close to you to park a food cart for $5,000. The busiest spots (near stations, sights and shops) sell the most.</p>
+            <p>Tap a street or the glowing market square to park a food cart for $5,000. The busiest spots (near stations, sights and shops) sell the most.</p>
           </>
         )}
         {step === 'menu' && (
           <>
-            <span className="chip">Step 3 of 5</span>
+            <span className="chip">Step 2 of 4</span>
             <h3>Choose your menu and prices</h3>
             <p className="small">Each dish has a fair price. Charge less and more people buy; charge more and fewer buy, but each sale earns more.</p>
             {menu.map((m, i) => {
@@ -464,7 +429,7 @@ export default function Tutorial() {
         )}
         {(step === 'sell' || step === 'price') && (
           <>
-            <span className="chip">Step 4 of 5</span>
+            <span className="chip">Step 3 of 4</span>
             <h3>{step === 'sell' ? 'Lunchtime rush!' : 'Try a higher price'}</h3>
             <p className="small">
               {step === 'sell'
@@ -481,7 +446,7 @@ export default function Tutorial() {
         )}
         {step === 'restock' && (
           <>
-            <span className="chip">Step 5 of 5</span>
+            <span className="chip">Step 4 of 4</span>
             <h3>Restock</h3>
             <p className="small">When ingredients run out, sales stop. In the game you buy them on the exchange, where market traders always sell, a little above the going price.</p>
             {low.length > 0 && <p className="small bad">Running low: {low.map(([g]) => GOODS[g].name).join(', ')}.</p>}

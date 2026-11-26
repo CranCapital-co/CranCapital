@@ -85,3 +85,5 @@
 .news-row:last-child { border-bottom: 0; }
 .news-row.war .icon, .news-row.battle .icon, .news-row.fallen .icon { color: var(--bad); }
 .news-row.peace .icon, .news-row.pact .icon, .news-row.alliance .icon { color: var(--good); }
+
+.army-row { width: 100%; text-align: left; background: var(--bg-2); border: 0; border-radius: 12px; padding: 8px 10px; color: var(--ink); cursor: pointer; gap: 6px; }

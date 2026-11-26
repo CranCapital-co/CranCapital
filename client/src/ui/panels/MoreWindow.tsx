@@ -22,7 +22,7 @@ export default function MoreWindow() {
       <div className="stack">
         {row('book', 'Help', 'How everything works, tier by tier', () => open('wiki'))}
         {row('account', 'Account', 'Your look, sound, graphics, privacy and data', () => open('account'))}
-        {row('plane', 'Travel', 'Fly to another city', () => open('travel'))}
+        {row('skyline', 'Cities', 'Switch to another city, instantly', () => open('travel'))}
         {row('bell', 'Notifications', 'Everything that happened while you were busy', () => open('notifications'))}
         {row('camera', 'Photo mode', 'Hide the interface, set the time of day, save a picture', () => window.dispatchEvent(new CustomEvent('cc:photo')))}
         {me.role !== 'player' && row('staff', 'Staff', 'Reports, moderation and events', () => open('mod'))}

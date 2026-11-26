@@ -27,6 +27,8 @@ export class Crowd {
   private density = 1;
   private enabled = true;
   private refreshTimer: any = 0;
+  private dead = false;
+  private onResize = () => this.resize();
 
   constructor(map: MLMap) {
     this.map = map;
@@ -43,7 +45,7 @@ export class Crowd {
     map.on('sourcedata', (e: any) => {
       if (e.sourceId === 'ofm' && e.isSourceLoaded && this.lines.length === 0) onMove();
     });
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', this.onResize);
     this.resize();
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
@@ -60,7 +62,11 @@ export class Crowd {
   }
 
   destroy() {
+    // Stop everything: a timer firing after the map is gone would crash.
+    this.dead = true;
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.refreshTimer);
+    window.removeEventListener('resize', this.onResize);
     this.canvas.remove();
   }
 
@@ -75,6 +81,7 @@ export class Crowd {
   }
 
   refresh() {
+    if (this.dead) return;
     if (this.map.getZoom() < 14.8 || !this.map.getSource('ofm')) {
       this.lines = [];
       this.peds = [];

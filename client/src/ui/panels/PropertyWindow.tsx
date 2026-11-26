@@ -2,17 +2,13 @@ import { useState } from 'react';
 import { rpc } from '../../lib/supabase';
 import { useGame, act, catalog, goodName } from '../../lib/store';
 import { money, num } from '../../lib/format';
-import { distM } from '../../lib/citydata';
 import { Window, useApi, Loading, Stat, Field, DollarInput, Confirm, Money } from '../components';
 import { refreshMe } from '../common';
 import { BizIcon, Icon } from '../Icon';
 
-function useNear(lat?: number, lng?: number, range = 80) {
-  const pos = useGame((s) => s.pos);
-  const walking = useGame((s) => s.walkingTo);
-  if (!pos || lat === undefined || lng === undefined) return { near: false, dist: Infinity };
-  const dist = distM(pos.lat, pos.lng, lat, lng);
-  return { near: dist <= range - 5 && !walking, dist };
+// There's no character to walk anywhere: everything in view is in reach.
+function useNear(_lat?: number, _lng?: number, _range = 80) {
+  return { near: true, dist: 0 };
 }
 
 export default function PropertyWindow({ params }: { params: { building?: number; plot?: { city: string; px: number; py: number } } }) {
@@ -21,13 +17,8 @@ export default function PropertyWindow({ params }: { params: { building?: number
   return null;
 }
 
-function WalkThere({ lat, lng, dist, label }: { lat: number; lng: number; dist: number; label: string }) {
-  return (
-    <div className="notice blue small row between">
-      <span>You’re {num(dist)} m away. {label}</span>
-      <button className="btn tiny" onClick={() => useGame.setState({ walkingTo: { lat, lng } })}>Walk there</button>
-    </div>
-  );
+function WalkThere(_: { lat: number; lng: number; dist: number; label: string }) {
+  return null;
 }
 
 function BuildingView({ id }: { id: number }) {
@@ -114,8 +105,7 @@ function BuildingView({ id }: { id: number }) {
                   className="btn"
                   disabled={!near.near}
                   onClick={async () => {
-                    const pos = useGame.getState().pos!;
-                    const r = await act(() => rpc<any>('rent_room', { p_building: b.id, p_kind: kind, p_name: name, p_lat: pos.lat, p_lng: pos.lng }), 'Room rented! Now fit it out and hire staff.');
+                    const r = await act(() => rpc<any>('rent_room', { p_building: b.id, p_kind: kind, p_name: name, p_lat: b.lat, p_lng: b.lng }), 'Room rented! Now fit it out and hire staff.');
                     if (r) {
                       window.dispatchEvent(new CustomEvent('cc:built', { detail: { id: r.business_id } }));
                       await refreshMe();
@@ -173,8 +163,7 @@ function BuildingView({ id }: { id: number }) {
             confirm="Buy"
             onCancel={() => setConfirm(null)}
             onConfirm={async () => {
-              const pos = useGame.getState().pos!;
-              const r = await act(() => rpc('buy_building', { p_building: b.id, p_lat: pos.lat, p_lng: pos.lng, p_expected_price: b.owner_name ? b.price : null }), 'It’s yours! Set the rent to suit you.');
+              const r = await act(() => rpc('buy_building', { p_building: b.id, p_lat: b.lat, p_lng: b.lng, p_expected_price: b.owner_name ? b.price : null }), 'It’s yours! Set the rent to suit you.');
               setConfirm(null);
               if (r) done();
             }}
@@ -251,8 +240,7 @@ function PlotView({ city, px, py }: { city: string; px: number; py: number }) {
               className="btn gold"
               disabled={!near.near || me.tier < 3}
               onClick={async () => {
-                const pos = useGame.getState().pos!;
-                if (await act(() => rpc('buy_plot', { p_city: city, p_px: px, p_py: py, p_lat: pos.lat, p_lng: pos.lng }), 'Plot bought! Now build on it.')) done();
+                if (await act(() => rpc('buy_plot', { p_city: city, p_px: px, p_py: py, p_lat: p.lat, p_lng: p.lng }), 'Plot bought! Now build on it.')) done();
               }}
             >
               {me.tier < 3 ? `Unlocks at tier 3 (${money(cat.tiers[2].net_worth, { compact: true })})` : `Buy for ${money(p.price)}`}

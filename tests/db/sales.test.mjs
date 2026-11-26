@@ -9,7 +9,9 @@ after(async () => { await db.end(); });
 test('a cart with a three-item menu sells every minute and "Sales today" goes up', async () => {
   const a = await newPlayer('Seller');
   const city = await one(`select * from game.cities where id = 'london'`);
-  const spot = await streetNear('london', city.start_lat, city.start_lng, 200 + Math.floor(Math.random() * 200));
+  // A quiet street away from the square, where other test runs' carts don't share its customers.
+  const ang = Math.random() * 2 * Math.PI;
+  const spot = await streetNear('london', city.start_lat + 0.012 * Math.sin(ang), city.start_lng + 0.018 * Math.cos(ang), Math.floor(Math.random() * 50));
   await standAt(a.id, spot);
   const r = await rpc(a.client, 'buy_cart', { p_name: 'Menu Cart', p_lat: spot.lat, p_lng: spot.lng });
   const b0 = await one('select * from game.businesses where id = $1', [r.business_id]);
@@ -28,7 +30,12 @@ test('a cart with a three-item menu sells every minute and "Sales today" goes up
   const b1 = await one('select * from game.businesses where id = $1', [r.business_id]);
   assert.ok(Number(b1.sales_today) >= 20, `sold ${b1.sales_today} in an hour`);
   assert.ok(Number(b1.revenue_today) >= 200000, `earned $${Number(b1.revenue_today) / 1000} in an hour`);
-  // Every item sold, not just one.
+  // Every item sold, not just one (another hour so a less popular dish
+  // gets its turn: customers choose at random).
+  for (let i = 0; i < 60; i++) {
+    await q(`update game.businesses set last_tick_at = now() - interval '1 minute' where id = $1`, [r.business_id]);
+    await q('select game.tick_business($1)', [r.business_id]);
+  }
   const sold = await one(`select coalesce(sum(qty), 0) q from game.storage where owner_id = $1 and good_id = 'wasabi'`, [a.id]);
   assert.ok(Number(sold.q) < 600, 'onigiri sold too');
   assert.deepEqual(await ledgerMismatches(), []);

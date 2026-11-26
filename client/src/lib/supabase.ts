@@ -60,3 +60,28 @@ export async function devSignIn(email: string) {
   const { error: e } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
   if (e) throw new GameError(e.message);
 }
+
+// Give up on a request that hangs (slow or flaky wifi), so the game can say
+// so and try again instead of spinning forever.
+export function withTimeout<T>(p: Promise<T>, ms = 15000, what = 'The server'): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${what} is taking too long to answer. Check your connection and try again.`)), ms)),
+  ]);
+}
+
+// Retry a request a few times with a short pause (a flaky connection often
+// works on the second try).
+export async function retrying<T>(fn: () => Promise<T>, tries = 3, ms = 15000): Promise<T> {
+  let last: any;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await withTimeout(fn(), ms);
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw last;
+}
+

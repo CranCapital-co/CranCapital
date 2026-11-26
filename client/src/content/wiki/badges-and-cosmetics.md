@@ -6,9 +6,9 @@ Your profile shows who you are in the world. None of it can be bought with real 
 
 - Display name: what other players see.
 - Title: a short line under your name.
-- Avatar skin: how your avatar looks on the map.
+- Avatar skin: your picture in chat, on your profile and on the leaderboards.
 - Player number: your place in the join order. Player 1 joined first.
-- Net-worth ring: a ring around your avatar that shows how wealthy you are.
+- Net-worth ring: a ring around your picture that shows how wealthy you are.
 
 ## The net-worth ring
 

@@ -6,7 +6,7 @@ Tier 3 unlocks at $150,000 net worth. You can now own property instead of rentin
 
 The map is divided into plots of 25 by 25 metres. You can buy any free plot that can be built on.
 
-Walk to within 60 metres of the plot to buy it. The price starts from $30,000 and changes with the city and foot traffic.
+Turn on land mode and tap a plot to buy it. The price starts from $30,000 and changes with the city and foot traffic.
 
 | City | Typical plot price, quiet to busy |
 | --- | --- |

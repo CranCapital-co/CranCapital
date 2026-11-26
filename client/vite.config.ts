@@ -7,6 +7,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ command }) => ({
   base: process.env.VITE_BASE ?? (command === 'build' ? './' : '/'),
   plugins: [react()],
+  // A new build gets a fresh offline cache for its code (see public/sw.js).
+  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   build: {
     target: 'es2020',
     chunkSizeWarningLimit: 1200,

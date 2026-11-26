@@ -54,3 +54,12 @@
 .gold-text { color: color-mix(in srgb, var(--gold) 75%, var(--ink)); font-weight: 700; }
 .chip.on { background: var(--brand); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .xp-float, .level-burst, .crate-icon, .renown-badge .dot { animation: none !important; } }
+
+/* The ticking money counter. */
+.per-second { position: relative; display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
+.per-second.up { color: var(--good); }
+.per-second.down { color: var(--bad); }
+.sec-coin { position: absolute; left: 0; top: -2px; font-style: normal; font-size: 11px; font-weight: 800; color: var(--good); pointer-events: none; animation: sec-up 1.4s ease-out forwards; white-space: nowrap; }
+@keyframes sec-up { 0% { transform: translateY(0) scale(.9); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-26px) scale(1.05); opacity: 0; } }
+.hud-cash { transition: color .3s; }
+@media (prefers-reduced-motion: reduce) { .sec-coin { display: none; } }
