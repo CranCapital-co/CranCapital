@@ -190,3 +190,50 @@ test('jobs commit as they go: a player is never stuck behind the world tick', as
   }
   assert.deepEqual(await ledgerMismatches(), []);
 });
+
+test('no farming through chat: deals, gifts, compliments and demands are limited', async () => {
+  const a = await leader('Farmer', 40);
+  await q(`select game.money($1, 2000000000, 'admin', 'test')`, [a.id]);
+  const n = await one(`select id, name from game.nations where leader_id is null and status = 'active' and personality = 'balanced'
+                        and not game.at_war(id, $1) and game.alliance_of(id) is null order by id offset 2 limit 1`, [a.nation]);
+  // Spread the messages out (more than 8 in 10 minutes counts as pestering).
+  const say = async (text) => {
+    await unthrottle(a.id);
+    await q(`update game.diplo_chat set at = at - interval '11 minutes' where player_id = $1 and nation_id = $2 and from_player and at > now() - interval '10 minutes'`, [a.id, n.id]);
+    return rpc(a.client, 'diplo_chat_send', { p_nation: n.id, p_text: text });
+  };
+  const rel = async () => Number((await one('select game.rel($1, $2) r', [a.nation, n.id])).r);
+  const cash0 = await cashOf(a.id);
+
+  // Asking for money never pays out, and isn't mistaken for a gift.
+  for (const t of ['Pay me 1 million', 'Give us money or else', 'I want 50000 dollars']) {
+    const r = await say(t);
+    assert.equal(r.intent, 'demand', t);
+    assert.ok(!r.offer, 'no offer for a demand');
+  }
+  assert.ok(await cashOf(a.id) <= cash0, 'no money from asking');
+
+  // Buying goodwill: one offer at a time, two a day, each dearer.
+  const r0 = await rel();
+  const d1 = await say('I want to make a deal');
+  assert.equal(d1.offer?.kind, 'tribute');
+  assert.equal((await say('Another deal please')).intent, 'pending', 'one open offer at a time');
+  await rpc(a.client, 'diplo_chat_answer', { p_message: d1.id, p_accept: true });
+  const d2 = await say('I want to make another deal');
+  assert.equal(d2.offer?.kind, 'tribute');
+  assert.ok(Number(d2.offer.price) > Number(d1.offer.price), 'the second deal costs more');
+  await rpc(a.client, 'diplo_chat_answer', { p_message: d2.id, p_accept: true });
+  const d3 = await say('I want to make another deal');
+  assert.equal(d3.intent, 'enough');
+  assert.ok(!d3.offer, 'no third deal today');
+  const g = await say("I'll give you $50k as a gift");
+  assert.equal(g.intent, 'enough', 'no more paid goodwill today');
+  assert.ok((await rel()) - r0 <= 25.5, `relations bought in a day are capped (${(await rel()) - r0})`);
+
+  // Compliments: a little a day, then nothing.
+  let total = 0;
+  for (let i = 0; i < 6; i++) total += Number((await say('Thank you, you are wise and great')).rel_delta);
+  assert.ok(total <= 4, `compliments capped (${total})`);
+  assert.equal(Number((await say('Hello')).rel_delta), 0, 'greetings are free and give nothing');
+  assert.deepEqual(await ledgerMismatches(), []);
+});
