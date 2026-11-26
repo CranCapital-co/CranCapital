@@ -29,13 +29,14 @@ export interface NationLite {
   id: string; name: string; color: string; status: 'active' | 'fallen';
   leader: { no: number; name: string; skin: string } | null;
   skill: number; skill_name: string; personality: string; power: number; share: number;
-  alliance: number | null; protected: boolean; stability: number;
+  alliance: number | null; protected: boolean; stability: number; rank?: number | null;
 }
 export interface WarLite { id: number; name: string; attacker: string; defender: string; score: number; started_at: string; att: string[]; def: string[] }
 export interface MoveLite { id: number; nation: string; from: string; to: string; kind: 'move' | 'attack' | 'raid' | 'missile'; depart_at: string; arrive_at: string }
 export interface WorldState {
   at: string;
-  era: { number: number; started_at: string; ends_at: string } | null;
+  era?: null; // eras are gone: the world never resets
+  coalitions?: { id: number; target: string; formed_at: string; members: string[] | null }[];
   territories: [string, string, string][];
   nations: NationLite[];
   alliances: { id: number; name: string; color: string; founder: string; members: string[] }[];

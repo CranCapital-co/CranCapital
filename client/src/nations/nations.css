@@ -88,3 +88,6 @@
 
 .army-row { width: 100%; text-align: left; background: var(--bg-2); border: 0; border-radius: 12px; padding: 8px 10px; color: var(--ink); cursor: pointer; gap: 6px; }
 .map-wait { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; gap: 12px; color: #e8f1f4; font-weight: 600; background: #0d2633; }
+.coalition-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.coalition-row.against-me { color: var(--bad); font-weight: 600; }
+.coalition-alert { background: color-mix(in srgb, var(--bad) 85%, #000); color: #fff; }

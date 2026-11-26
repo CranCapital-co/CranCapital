@@ -117,7 +117,16 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
             </span>
           </div>
         )}
-        {world?.era && <span className="hud-pill era-pill tiny"><Icon name="crown" size={16} accent="var(--gold)" /> Era {world.era.number} · {world.wars.length} wars</span>}
+        {world && (
+          <span className="hud-pill era-pill tiny">
+            <Icon name="crown" size={16} accent="var(--gold)" />
+            {world.nations.find((x) => x.id === n?.id)?.rank ? `#${world.nations.find((x) => x.id === n?.id)!.rank} in the world · ` : ''}
+            {world.wars.length} wars
+          </span>
+        )}
+        {n && (world?.coalitions ?? []).some((c) => c.target === n.id) && (
+          <span className="hud-pill era-pill tiny coalition-alert"><Icon name="swords" size={16} /> A coalition is against you</span>
+        )}
       </header>
 
       <aside className={`nations-panel ${wide ? 'side' : 'bottom'}`}>
