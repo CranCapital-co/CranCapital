@@ -238,8 +238,8 @@ test('war: declare, march, win, capture, capitulate and annex', async () => {
   assert.ok(Number((await one(`select value from game.player_counters where player_id = $1 and key = 'battles_won'`, [a.id])).value) >= 1);
   const news = await rpc(anonClient(), 'world_news', { p_limit: 20 });
   assert.ok(news.some((x) => x.kind === 'fallen'));
-  // A truce now stands between them.
-  assert.ok(await one(`select 1 from game.treaties where kind = 'truce' and a = least($1, $2) and b = greatest($1, $2)`, [pair.a, pair.b]));
+  // A conquest brings no automatic truce: the fighting can carry on next door.
+  assert.equal(await one(`select 1 from game.treaties where kind = 'truce' and a = least($1, $2) and b = greatest($1, $2)`, [pair.a, pair.b]), undefined);
 
   // Someone else can claim the fallen country only while an AI holds it: here a player does.
   const late = await newPlayer('Late');
@@ -290,6 +290,7 @@ test('a lost battle, peace terms the AI weighs, and allies who come to help', as
     const yes = await rpc(a.client, 'propose_peace', { p_war: war, p_terms: 'white' });
     assert.equal(yes.status, 'accepted');
     assert.equal((await one('select status from game.wars where id = $1', [war])).status, 'ended');
+    assert.ok(await one(`select 1 from game.treaties where kind = 'truce' and a = least($1, $2) and b = greatest($1, $2)`, [pair.a, pair.b]), 'an agreed peace brings a truce');
     assert.ok(Number((await one(`select value from game.player_counters where player_id = $1 and key = 'treaties'`, [a.id])).value) >= 1);
   }
 

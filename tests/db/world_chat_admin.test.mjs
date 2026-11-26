@@ -237,3 +237,16 @@ test('no farming through chat: deals, gifts, compliments and demands are limited
   assert.equal(Number((await say('Hello')).rel_delta), 0, 'greetings are free and give nothing');
   assert.deepEqual(await ledgerMismatches(), []);
 });
+
+test('surveying has no cooldown', async () => {
+  const p = await newPlayer('Prospector');
+  await q('update game.players set tier = 4 where id = $1', [p.id]);
+  await q(`select game.money($1, 1000000000, 'admin', 'test')`, [p.id]);
+  const c = await one(`select * from game.cities where id = 'london'`);
+  // Eight different blocks, one straight after another.
+  for (let i = 0; i < 8; i++) {
+    const r = await rpc(p.client, 'survey', { p_lat: c.start_lat + 0.0021 * i, p_lng: c.start_lng - 0.0031 * i });
+    assert.ok(Array.isArray(r.deposits), `survey ${i + 1}`);
+  }
+  assert.deepEqual(await ledgerMismatches(), []);
+});
