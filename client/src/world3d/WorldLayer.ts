@@ -183,6 +183,60 @@ export class WorldLayer implements CustomLayerInterface {
   static yawOf(heading: number) {
     return Math.atan2(Math.cos(heading), -Math.sin(heading));
   }
+  // Is a local point on water (a river, a dock, the sea)? From the street
+  // map's water shapes, refreshed every so often.
+  private waterShapes: any[] | null = null;
+  private waterAt = 0;
+  isWater(p: THREE.Vector3): boolean {
+    if (!this.map) return false;
+    const now = performance.now();
+    if (!this.waterShapes || now - this.waterAt > 15000) {
+      try {
+        this.waterShapes = this.map.querySourceFeatures('ofm', { sourceLayer: 'water' });
+      } catch {
+        this.waterShapes = [];
+      }
+      this.waterAt = now;
+    }
+    const ll = new MercatorCoordinate(this.origin.x + p.x * this.s, this.origin.y + p.z * this.s, 0).toLngLat();
+    const inRing = (r: number[][]) => {
+      let c = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        if (r[i][1] > ll.lat !== r[j][1] > ll.lat && ll.lng < ((r[j][0] - r[i][0]) * (ll.lat - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c;
+      }
+      return c;
+    };
+    for (const f of this.waterShapes) {
+      const g = f.geometry;
+      const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const rings of polys) {
+        if (!inRing(rings[0])) continue;
+        if (!rings.slice(1).some(inRing)) return true;
+      }
+    }
+    return false;
+  }
+  // The longest run of open water from a quay, looking out roughly along
+  // `yaw`: which way a ship can sail without crossing land, and how far.
+  waterRun(from: THREE.Vector3, yaw: number, max = 900): { dir: THREE.Vector3; len: number } {
+    let best = { dir: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)), len: 0 };
+    const p = new THREE.Vector3();
+    for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.57, -1.57, 2.1, -2.1, 2.6, -2.6, Math.PI]) {
+      const a = yaw + off;
+      const dir = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
+      let len = 0;
+      let wet = false;
+      for (let d = 20; d <= max; d += 20) {
+        p.copy(from).addScaledVector(dir, d);
+        if (this.isWater(p)) {
+          wet = true;
+          len = d;
+        } else if (wet || d > 60) break; // the quay may be a little way from the water
+      }
+      if (len > best.len * 1.15) best = { dir, len };
+    }
+    return best;
+  }
   screenOf(p: THREE.Vector3) {
     const mc = new MercatorCoordinate(this.origin.x + p.x * this.s, this.origin.y + p.z * this.s, 0);
     const pt = this.map.project(mc.toLngLat());

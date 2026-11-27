@@ -90,7 +90,11 @@ async function seed() {
   for (const f of files) {
     const parts = chunks(fs.readFileSync(f, 'utf8'));
     process.stdout.write(`seed ${path.relative(ROOT, f)} (${parts.length} part${parts.length > 1 ? 's' : ''}) ... `);
-    for (const part of parts) await sql(part);
+    for (const part of parts) {
+      await sql(part);
+      // A breather between big chunks, so players on a small server don't feel it.
+      if (process.env.SEED_PAUSE_MS) await new Promise((r) => setTimeout(r, Number(process.env.SEED_PAUSE_MS)));
+    }
     console.log('ok');
   }
 }
