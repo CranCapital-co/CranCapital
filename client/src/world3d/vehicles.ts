@@ -92,20 +92,25 @@ export class Vehicles {
     this.movers.push({ kind: 'van', from: stop.clone().addScaledVector(side, -70), to: stop, t: 0, dur: 2.6, wait: 3, yaw: Math.atan2(side.x, side.z), leave: stop.clone().addScaledVector(side, 70), stage: 0 });
   }
 
-  // A ship sails out from the quay with the export.
+  // A ship sails out from the quay with the export, along the water (the
+  // longest stretch of open water it can find), never over land.
   ship(at: THREE.Vector3, yaw: number) {
     const out = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const quay = at.clone().addScaledVector(out, 16);
+    const run = this.w.waterRun(quay, yaw);
+    if (run.len < 40) return; // no water to sail on in view
     sound.play('horn');
-    this.movers.push({ kind: 'ship', from: quay, to: quay.clone().addScaledVector(out, 900), t: 0, dur: 45, wait: 0, yaw: Math.atan2(out.x, out.z), stage: 1 });
+    this.movers.push({ kind: 'ship', from: quay, to: quay.clone().addScaledVector(run.dir, run.len), t: 0, dur: Math.max(10, 45 * (run.len / 900)), wait: 0, yaw: Math.atan2(run.dir.x, run.dir.z), stage: 1 });
   }
 
-  // A ship sails in from the sea to the quay with a delivery.
+  // A ship sails in from open water to the quay with a delivery.
   shipIn(at: THREE.Vector3, yaw: number) {
     const out = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const quay = at.clone().addScaledVector(out, 16);
+    const run = this.w.waterRun(quay, yaw, 700);
+    if (run.len < 40) return;
     sound.play('horn');
-    this.movers.push({ kind: 'ship', from: quay.clone().addScaledVector(out, 700), to: quay, t: 0, dur: 30, wait: 0, yaw: Math.atan2(-out.x, -out.z), stage: 1 });
+    this.movers.push({ kind: 'ship', from: quay.clone().addScaledVector(run.dir, run.len), to: quay, t: 0, dur: Math.max(8, 30 * (run.len / 700)), wait: 0, yaw: Math.atan2(-run.dir.x, -run.dir.z), stage: 1 });
   }
 
   private frame(dt: number) {
