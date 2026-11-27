@@ -109,28 +109,63 @@ export function onWorldNews(ev: 'news' | 'move' | 'battle', fn: (d: any) => void
   return () => worldBus.removeEventListener(ev, h);
 }
 
-export function useWorldState(every = 15000) {
-  const [state, setState] = useState<WorldState | null>(null);
-  const timer = useRef<any>(0);
+// One shared copy of the live world for everything that shows it (the
+// Nation screen, the world on the city map): one poll, not one per screen.
+let shared: WorldState | null = null;
+const subs = new Map<number, { every: number; set: (s: WorldState) => void }>();
+let subId = 0;
+let pollTimer: any = 0;
+let soonTimer: any = 0;
+let newsOffs: (() => void)[] = [];
+let inflight: Promise<void> | null = null;
+function loadShared() {
+  if (inflight) return inflight;
+  inflight = rpc<WorldState>('world_state')
+    .then((s) => {
+      shared = s;
+      subs.forEach((x) => x.set(s));
+    })
+    .catch(() => {})
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+function repoll() {
+  clearInterval(pollTimer);
+  if (!subs.size) return;
+  const every = Math.min(...[...subs.values()].map((x) => x.every));
+  pollTimer = setInterval(() => !document.hidden && loadShared(), every);
+}
+
+export function useWorldState(every = 15000, active = true) {
+  const [state, setState] = useState<WorldState | null>(shared);
   useEffect(() => {
-    let alive = true;
-    const load = () => rpc<WorldState>('world_state').then((s) => alive && setState(s)).catch(() => {});
-    load();
-    const i = setInterval(() => !document.hidden && load(), every);
-    joinWorldNews();
-    const soon = () => {
-      clearTimeout(timer.current);
-      timer.current = setTimeout(load, 1200);
-    };
-    const offs = [onWorldNews('news', soon), onWorldNews('move', soon), onWorldNews('battle', soon)];
+    if (!active) return;
+    const id = ++subId;
+    subs.set(id, { every, set: setState });
+    if (subs.size === 1) {
+      joinWorldNews();
+      const soon = () => {
+        clearTimeout(soonTimer);
+        soonTimer = setTimeout(loadShared, 1200);
+      };
+      newsOffs = [onWorldNews('news', soon), onWorldNews('move', soon), onWorldNews('battle', soon)];
+    }
+    if (shared) setState(shared);
+    loadShared();
+    repoll();
     return () => {
-      alive = false;
-      clearInterval(i);
-      clearTimeout(timer.current);
-      offs.forEach((f) => f());
-      leaveWorldNews();
+      subs.delete(id);
+      repoll();
+      if (!subs.size) {
+        clearTimeout(soonTimer);
+        newsOffs.forEach((f) => f());
+        newsOffs = [];
+        leaveWorldNews();
+      }
     };
-  }, [every]);
+  }, [every, active]);
   return state;
 }
 

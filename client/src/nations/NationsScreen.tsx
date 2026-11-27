@@ -11,15 +11,15 @@ import { cityName, goodName as catalogGood } from '../lib/store';
 import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, type WorldMapData } from './api';
 import { OverviewTab, MilitaryTab, ResearchTab, DiplomacyTab, WorldTab, UnitChips, type MyNation, type Ctx } from './NationTabs';
 import NationPicker from './NationPicker';
+import { useWorldView } from './worldView';
 import { TalkTab } from './TalkTab';
 import { refreshMe } from '../ui/common';
 import './nations.css';
 
-const WorldMap = lazy(() => import('./WorldMap'));
 
 type Tab = 'nation' | 'military' | 'research' | 'diplomacy' | 'talk' | 'world';
 
-export default function NationsScreen({ onClose }: { onClose: () => void }) {
+export default function NationsScreen({ onClose, initialSel }: { onClose: () => void; initialSel?: string | null }) {
   const me = useGame((s) => s.me)!;
   const { data, error, retry } = useWorldMap();
   const world = useWorldState(20000);
@@ -37,7 +37,7 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('nation');
   const [talkTo, setTalkTo] = useState<string | null>(null);
   const talk = (id: string) => { setTalkTo(id); setTab('talk'); };
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initialSel ?? null);
   const [send, setSend] = useState<{ from: string; to?: string } | null>(null);
   const [wide, setWide] = useState(() => window.innerWidth >= 900);
   useEffect(() => {
@@ -68,6 +68,18 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
     return my.territories.find((t) => t.id === send.from)?.neighbours.map((x) => x.id);
   }, [send, my]);
 
+  // The world is drawn on the city map: tell it what to show and highlight.
+  useEffect(() => {
+    useWorldView.getState().set({ open: true, onSelect: (id) => setSel(id) });
+    return () => useWorldView.getState().set({ open: false, onSelect: null, selected: null, targets: undefined, troops: null, ships: [], padding: {} });
+  }, []);
+  useEffect(() => {
+    useWorldView.getState().set({
+      selected: sel, targets, troops: troops ?? null, ships,
+      padding: wide ? { right: 440 } : { bottom: Math.round(window.innerHeight * 0.5) },
+    });
+  }, [sel, targets, troops, ships, wide]);
+
   // No country (fell, stepped down, or never picked): pick one here.
   if (my && !my.nation) {
     return (
@@ -83,26 +95,10 @@ export default function NationsScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="nations-screen">
-      <div className="nations-map">
-        {!data && !error && <div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}
-        {data && (
-          <Suspense fallback={<div className="map-wait"><span className="spinner" aria-hidden /> Loading the world map…</div>}>
-            <WorldMap
-              map={data.map}
-              shapes={data.shapes}
-              state={world}
-              me={n?.id}
-              selected={sel}
-              onSelect={(id) => setSel(id)}
-              targets={targets}
-              troops={troops}
-              ships={ships}
-              padding={wide ? { right: 440 } : { bottom: Math.round(window.innerHeight * 0.5) }}
-            />
-          </Suspense>
-        )}
+      <div className="nations-notices">
+        {!data && !error && <div className="hud-pill map-loading"><span className="spinner small" aria-hidden /> Loading the world…</div>}
         {error && (
-          <div className="notice red picker-error row" style={{ justifyContent: 'space-between' }}>
+          <div className="notice red row" style={{ justifyContent: 'space-between' }}>
             <span>{error}</span>
             <button className="btn small" onClick={retry}>Try again</button>
           </div>
