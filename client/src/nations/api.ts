@@ -53,7 +53,13 @@ export function loadWorldMap(): Promise<WorldMapData> {
 }
 
 // Country shapes (Natural Earth 1:110m, public domain), keyed by territory id.
+// The topology is kept too: it knows which edges are coast (used by one
+// country only), which is where fleets anchor.
 let shapesP: Promise<GeoJSON.FeatureCollection> | null = null;
+let topology: any = null;
+let shapeList: GeoJSON.FeatureCollection | null = null;
+export const worldTopology = () => topology;
+export const worldShapes = () => shapeList;
 export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
   if (!shapesP) {
     shapesP = fetch(`${import.meta.env.BASE_URL}world/countries.json`)
@@ -61,7 +67,11 @@ export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
         if (!r.ok) throw new Error('Couldn’t load the world map.');
         return r.json();
       })
-      .then((topo) => feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection)
+      .then((topo) => {
+        topology = topo;
+        shapeList = feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection;
+        return shapeList;
+      })
       .catch((e) => { shapesP = null; throw e; });
   }
   return shapesP;
@@ -216,4 +226,60 @@ export function oddsLabel(ratio: number) {
   if (ratio >= 0.95) return { label: 'A coin toss', tone: 'gold' };
   if (ratio >= 0.7) return { label: 'Risky', tone: 'red' };
   return { label: 'Hopeless', tone: 'red' };
+}
+
+// ---------------------------------------------------------------------------
+// Military upgrades and fleets
+// ---------------------------------------------------------------------------
+export interface UpgradeTrack {
+  id: 'missile_range' | 'missile_warhead' | 'missile_guidance' | 'troopships';
+  name: string; icon: string; body: string; tech: string | null; ready: boolean;
+  level: number; max: number; price: number | null; now: string; next: string | null;
+}
+export interface Upgrades { tracks: UpgradeTrack[]; missile_range_km: number; troop_capacity: number; troop_range_km: number }
+
+// Places aboard a troopship: infantry 1, artillery 2, armour 3, missiles 5.
+export function cargoOf(units: Record<string, number>) {
+  return (units.infantry ?? 0) + 2 * (units.artillery ?? 0) + 3 * (units.armor ?? 0) + 5 * (units.missile ?? 0);
+}
+
+export interface FleetMap {
+  docked: { t: string; n: string; rel: 'mine' | 'ally' | 'enemy'; qty: number }[];
+  sailing: { id: number; n: string; rel: 'mine' | 'ally' | 'enemy'; from: string; to: string; kind: string; depart_at: string; arrive_at: string; qty: number; troops: number | null }[];
+}
+
+// Fleets in port and at sea, shared by everything that draws them; polled
+// only while the world is on screen (not on every move in the world: that
+// would be every player asking at once), and refreshed after you send one.
+let fleets: FleetMap | null = null;
+const fleetSubs = new Set<(f: FleetMap) => void>();
+let fleetTimer: any = 0;
+let fleetBusy = false;
+export function refreshFleets() {
+  if (fleetBusy || !fleetSubs.size) return;
+  fleetBusy = true;
+  rpc<FleetMap>('fleet_map')
+    .then((f) => {
+      fleets = f;
+      fleetSubs.forEach((s) => s(f));
+    })
+    .catch(() => {})
+    .finally(() => { fleetBusy = false; });
+}
+export function useFleets(active: boolean) {
+  const [f, setF] = useState<FleetMap | null>(fleets);
+  useEffect(() => {
+    if (!active) return;
+    fleetSubs.add(setF);
+    if (fleetSubs.size === 1) {
+      fleetTimer = setInterval(() => !document.hidden && refreshFleets(), 30000);
+    }
+    if (fleets) setF(fleets);
+    refreshFleets();
+    return () => {
+      fleetSubs.delete(setF);
+      if (!fleetSubs.size) clearInterval(fleetTimer);
+    };
+  }, [active]);
+  return f;
 }

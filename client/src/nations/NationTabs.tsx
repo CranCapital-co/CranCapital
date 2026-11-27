@@ -8,7 +8,7 @@ import { sound } from '../audio/sound';
 import { Icon } from '../ui/Icon';
 import { Confirm, useApi, Loading } from '../ui/components';
 import { refreshMe } from '../ui/common';
-import { flag, untilLong, type WorldMapData, type WorldState, type UnitType } from './api';
+import { flag, untilLong, refreshFleets, type WorldMapData, type WorldState, type UnitType, type Upgrades, type UpgradeTrack } from './api';
 import type { TroopMap } from './WorldMap';
 
 export interface MyNation {
@@ -205,8 +205,9 @@ export function MilitaryTab({ my, map, reload, name, sendFrom, select }: Ctx) {
             <span className="tnum small">{num(Object.values(t.garrison).reduce((a, b) => a + b, 0))} units · defence {num(t.defence)}</span>
           </button>
         ))}
-        <p className="tiny muted" style={{ margin: 0 }}>Gold numbers on the map are your troops, blue your allies’, red the enemy’s (estimated).</p>
+        <p className="tiny muted" style={{ margin: 0 }}>Gold numbers on the map are your troops, blue your allies’, red the enemy’s (estimated). Zoom in on the sea to see your warships.</p>
       </section>
+      <UpgradesCard nation={my.nation?.id ?? null} map={map} />
       {my.armies.length > 0 && (
         <section className="card stack">
           <strong className="row"><Icon name="truck" size={18} accent="var(--gold)" /> On the move</strong>
@@ -229,6 +230,78 @@ export function MilitaryTab({ my, map, reload, name, sendFrom, select }: Ctx) {
         <TerritoryCard key={t.id} t={t} my={my} map={map} done={done} reload={reload} name={name} sendFrom={sendFrom} select={select} />
       ))}
     </div>
+  );
+}
+
+// Military upgrades: missiles (range, warheads, guidance) and troopships.
+// Bought once for your country, from your own cash.
+function UpgradesCard({ nation, map }: { nation: string | null; map: WorldMapData }) {
+  const cash = useGame((s) => s.me?.cash ?? 0);
+  const { data, reload } = useApi(() => rpc<Upgrades>('military_upgrades'), [nation]);
+  const [ask, setAsk] = useState<UpgradeTrack | null>(null);
+  if (!data) return <section className="card"><Loading lines={3} /></section>;
+  const buy = async (t: UpgradeTrack) => {
+    const r = await act(() => rpc<Upgrades>('military_upgrade', { p_track: t.id }), `${t.name} level ${t.level + 1}: ${t.next}.`);
+    if (r) {
+      sound.play('tierup');
+      reload();
+      refreshMe();
+      refreshFleets();
+    }
+  };
+  const group = (title: string, icon: string, ids: string[]) => (
+    <div className="stack" style={{ gap: 8 }}>
+      <span className="row small"><Icon name={icon} size={16} accent="var(--gold)" /> <b>{title}</b></span>
+      {data.tracks.filter((t) => ids.includes(t.id)).map((t) => {
+        const maxed = t.level >= t.max;
+        const tech = map.techs.find((x) => x.id === t.tech)?.name;
+        return (
+          <div key={t.id} className="upgrade-row">
+            <Icon name={t.icon} size={22} accent={t.level ? 'var(--gold)' : undefined} />
+            <div className="grow stack" style={{ gap: 2 }}>
+              <span className="row between small">
+                <b>{t.name}</b>
+                <span className="pips" aria-label={`Level ${t.level} of ${t.max}`}>
+                  {Array.from({ length: t.max }, (_, i) => <i key={i} className={i < t.level ? 'on' : ''} />)}
+                </span>
+              </span>
+              <span className="tiny muted">{t.body}</span>
+              <span className="tiny">{t.now}{t.next && <> → <b>{t.next}</b></>}</span>
+              {!t.ready && !maxed && <span className="tiny muted"><Icon name="lock" size={12} /> Research {tech ?? 'it'} first.</span>}
+            </div>
+            {maxed ? (
+              <span className="chip gold tiny">Max</span>
+            ) : !t.ready ? (
+              <span className="chip tiny" aria-label="Locked"><Icon name="lock" size={14} /></span>
+            ) : (
+              <button className="btn small gold" disabled={cash < (t.price ?? 0)} onClick={() => ((t.price ?? 0) >= 100_000_000 ? setAsk(t) : buy(t))}>
+                {money(t.price, { compact: true, cents: false })}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+  return (
+    <section className="card stack">
+      <strong className="row"><Icon name="sparkle" size={18} accent="var(--gold)" /> Upgrades</strong>
+      {group('Missiles', 'rocket', ['missile_range', 'missile_warhead', 'missile_guidance'])}
+      {group('Navy', 'ship', ['troopships'])}
+      <p className="tiny muted" style={{ margin: 0 }}>
+        Missiles move like troops between territories you hold; launch them from a silo. Troopships sail troops coast to coast:
+        infantry take one place, artillery two, armour three, missiles five.
+      </p>
+      {ask && (
+        <Confirm
+          title={`${ask.name} level ${ask.level + 1}?`}
+          body={<>It costs <b>{money(ask.price, { cents: false })}</b> of your money. {ask.next}.</>}
+          confirm="Upgrade"
+          onCancel={() => setAsk(null)}
+          onConfirm={async () => { const t = ask; setAsk(null); await buy(t); }}
+        />
+      )}
+    </section>
   );
 }
 
@@ -540,7 +613,7 @@ function SurrenderButton({ onYes }: { onYes: () => void }) {
     <>
       <button className="btn tiny danger" onClick={() => setAsk(true)}>Surrender</button>
       {ask && (
-        <Confirm title="Surrender?" body="The enemy keeps all the land it occupies and takes a quarter of your money. The war ends at once, with a 24-hour truce." confirm="Surrender" danger onCancel={() => setAsk(false)} onConfirm={() => { setAsk(false); onYes(); }} />
+        <Confirm title="Surrender?" body="The enemy keeps all the land it occupies and takes a quarter of your money. The war ends at once." confirm="Surrender" danger onCancel={() => setAsk(false)} onConfirm={() => { setAsk(false); onYes(); }} />
       )}
     </>
   );

@@ -8,7 +8,7 @@ import { Icon } from '../ui/Icon';
 import { Modal, Tabs, Loading, useApi } from '../ui/components';
 import type { TroopMap } from './WorldMap';
 import { cityName, goodName as catalogGood } from '../lib/store';
-import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, type WorldMapData } from './api';
+import { useWorldMap, useWorldState, flag, fmtPop, fmtGdp, PERSONALITY, attackOf, oddsLabel, cargoOf, refreshFleets, type Upgrades, type WorldMapData } from './api';
 import { OverviewTab, MilitaryTab, ResearchTab, DiplomacyTab, WorldTab, UnitChips, type MyNation, type Ctx } from './NationTabs';
 import NationPicker from './NationPicker';
 import { useWorldView } from './worldView';
@@ -162,6 +162,10 @@ function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onCl
   const atWar = my.wars.some((w) => (w.enemies ?? []).includes(controller));
   // My territories next to it, with troops, to attack or reinforce from.
   const sources = my.territories.filter((x) => x.held && x.neighbours.some((nb) => nb.id === id) && Object.values(x.garrison).some((v) => v > 0));
+  // Or from further away: by troopship (coast to coast) or by missile.
+  const far = sources.length ? null : my.territories.find((x) => x.held && (
+    ((x.garrison.naval ?? 0) > 0 && !x.landlocked && !t?.landlocked) ||
+    ((x.garrison.missile ?? 0) > 0 && atWar && x.buildings.some((b) => b.kind === 'silo' && b.level > 0))));
   const intelHere = info?.territories?.find((x: any) => x.id === id);
   const level = my.level;
   const done = () => { reload(); reloadInfo(); };
@@ -201,8 +205,8 @@ function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onCl
       {isMine && mineHere && <div className="small"><UnitChips units={mineHere.garrison} types={map.units} /> <span className="muted">· defence {num(mineHere.defence)}</span></div>}
       {my.nation && !isMine && (
         <div className="row wrap" style={{ gap: 6 }}>
-          {(atWar || allied) && sources.length > 0 && (
-            <button className={`btn small ${atWar ? 'danger' : ''}`} onClick={() => ctx.sendFrom(sources[0].id, id)}>
+          {(atWar || allied) && (sources.length > 0 || far) && (
+            <button className={`btn small ${atWar ? 'danger' : ''}`} onClick={() => ctx.sendFrom((sources[0] ?? far)!.id, id)}>
               <Icon name="swords" size={16} /> {atWar ? 'Attack' : 'Send troops'}
             </button>
           )}
@@ -265,48 +269,82 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
   const { my, map, world, name, reload } = ctx;
   const [from, setFrom] = useState(from0);
   const src = my.territories.find((t) => t.id === from)!;
-  const air = (src?.garrison.air ?? 0) > 0;
-  // Where it can go: neighbours, plus anywhere in air range for air wings.
+  const a = map.territories.find((t) => t.id === from)!;
+  const { data: up } = useApi(() => rpc<Upgrades>('military_upgrades'), [my.nation?.id]);
+  const have = src?.garrison ?? {};
+  const silo = src?.buildings.find((x) => x.kind === 'silo')?.level ?? 0;
+  const enemies = useMemo(() => new Set(my.wars.flatMap((w) => w.enemies ?? [])), [my.wars]);
+  const ctrlOf = useCallback((id: string) => world?.territories.find((t) => t[0] === id)?.[2] ?? id, [world]);
+  const voyageKm = useCallback((t: { lat: number; lng: number }) => Math.round(km(a, t) * 1.2), [a]);
+  // Where it can go: neighbours; anywhere in reach of your air wings, of your
+  // troopships (coast to coast) and, to strike, of your missiles.
   const options = useMemo(() => {
     const ids = new Set(src?.neighbours.map((n) => n.id) ?? []);
-    if (air) {
-      const a = map.territories.find((t) => t.id === from)!;
-      map.territories.forEach((t) => { if (t.id !== from && km(a, t) <= 2500) ids.add(t.id); });
-    }
-    return [...ids].map((id) => map.territories.find((t) => t.id === id)!).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
-  }, [src, air, from, map]);
-  const [to, setTo] = useState<string>(to0 && options.some((o) => o.id === to0) ? to0 : options[0]?.id ?? '');
-  const [units, setUnits] = useState<Record<string, number>>(() => Object.fromEntries(Object.entries(src?.garrison ?? {}).filter(([k]) => k !== 'missile').map(([k, v]) => [k, Math.ceil(v * 0.8)])));
+    if (!a) return [];
+    map.territories.forEach((t) => {
+      if (t.id === from) return;
+      if ((have.air ?? 0) > 0 && km(a, t) <= 2500) ids.add(t.id);
+      if ((have.naval ?? 0) > 0 && (up?.troop_range_km ?? 0) > 0 && !a.landlocked && !t.landlocked && voyageKm(t) <= up!.troop_range_km) ids.add(t.id);
+      if (silo > 0 && (have.missile ?? 0) > 0 && enemies.has(ctrlOf(t.id)) && km(a, t) <= (up?.missile_range_km ?? 3000)) ids.add(t.id);
+    });
+    return [...ids].map((id) => map.territories.find((t) => t.id === id)!).filter(Boolean).sort((x, y) => x.name.localeCompare(y.name));
+  }, [src, a, from, map, have, up, silo, enemies, ctrlOf, voyageKm]);
+  const [to, setTo] = useState<string>(to0 ?? '');
+  useEffect(() => {
+    if (!options.some((o) => o.id === to)) setTo(to0 && options.some((o) => o.id === to0) ? to0 : options[0]?.id ?? '');
+  }, [options]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [units, setUnits] = useState<Record<string, number>>(() => Object.fromEntries(Object.entries(have).map(([k, v]) => [k, k === 'missile' ? 0 : Math.ceil(v * 0.8)])));
+  useEffect(() => {
+    setUnits(Object.fromEntries(Object.entries(src?.garrison ?? {}).map(([k, v]) => [k, k === 'missile' ? 0 : Math.ceil(v * 0.8)])));
+  }, [from]); // eslint-disable-line react-hooks/exhaustive-deps
   const [missiles, setMissiles] = useState(0);
-  const controller = world?.territories.find((t) => t[0] === to)?.[2] ?? to;
+  const controller = ctrlOf(to);
   const { data: info } = useApi(() => (to ? rpc<any>('nation_info', { p_id: controller }) : Promise.resolve(null)), [to, controller]);
-  if (!src) return null;
+  if (!src || !a) return null;
   const link = map.links.find((l) => (l[0] === from && l[1] === to) || (l[1] === from && l[0] === to));
-  const a = map.territories.find((t) => t.id === from)!;
   const b = map.territories.find((t) => t.id === to);
-  const dist = link ? link[3] : b ? km(a, b) : 0;
   const chosen = Object.entries(units).filter(([, v]) => v > 0);
-  const speed = Math.min(...chosen.map(([k]) => map.units.find((u) => u.id === k)?.speed ?? 100));
+  const airOnly = chosen.length > 0 && chosen.every(([k]) => k === 'air');
+  const fleets = units.naval ?? 0;
+  const voyage = !link && fleets > 0;
+  const cap = fleets * (up?.troop_capacity ?? 0);
+  const aboard = cargoOf(units);
+  const dist = link ? link[3] : b ? (voyage ? voyageKm(b) : km(a, b)) : 0;
+  const speed = Math.min(...chosen.map(([k]) => (k === 'missile' ? 120 : map.units.find((u) => u.id === k)?.speed ?? 100)));
   const minutes = chosen.length ? 2 + dist / speed : 0;
-  const allied = controller === my.nation?.id || !!my.alliance?.members.includes(controller);
-  const atWar = my.wars.some((w) => (w.enemies ?? []).includes(controller));
-  const groundAllowed = !!link || chosen.every(([k]) => k === 'air');
+  const mine = controller === my.nation?.id;
+  const allied = mine || !!my.alliance?.members.includes(controller);
+  const atWar = enemies.has(controller);
+  // Why it can't go, if it can't.
+  let blocked: string | null = null;
+  if (b && chosen.length) {
+    if ((units.missile ?? 0) > 0 && !(mine && src.held && src.controller === my.nation?.id)) blocked = 'Missiles only move between territories you hold. To hit an enemy, launch them below.';
+    else if (!link && airOnly && km(a, b) > 2500) blocked = 'Too far: air wings reach 2,500 km.';
+    else if (!link && !airOnly && !voyage) blocked = 'That’s not next door: ground forces cross one border at a time. Take fleets along to sail them there.';
+    else if (voyage && (a.landlocked || b.landlocked)) blocked = 'Fleets sail only between coasts.';
+    else if (voyage && !(up?.troop_capacity)) blocked = 'Upgrade your fleets to troopships (Military, Upgrades) to sail troops overseas.';
+    else if (voyage && dist > (up?.troop_range_km ?? 0)) blocked = `Too far: your troopships reach ${num(up!.troop_range_km)} km.`;
+    else if (voyage && (units.air ?? 0) > 0 && dist > 2500) blocked = 'Air wings reach 2,500 km: send them separately.';
+    else if (voyage && aboard > cap) blocked = `Too many aboard: ${num(aboard)} places for ${num(cap)}. Send fewer troops or more fleets.`;
+  }
   // Odds: our attack against their estimated defence (troops, militia, forts).
   const terr = info?.territories?.find((x: any) => x.id === to);
   const tDef = terr
-    ? (Object.entries(terr.troops ?? {}) as [string, number][]).reduce((s, [k, v]) => s + v * (map.units.find((u) => u.id === k)?.def ?? 0), 0)
+    ? (Object.entries(terr.troops ?? {}) as [string, number][]).reduce((sum, [k, v]) => sum + v * (map.units.find((u) => u.id === k)?.def ?? 0), 0)
       + (terr.owner === terr.controller ? (b?.militia ?? 0) : 0)
     : 0;
   const def = tDef * (1 + 0.15 * (terr?.forts ?? 0));
-  const atk = attackOf(units, map.units, link?.[2] === 'sea' && !(units.naval > 0));
+  const atk = attackOf(units, map.units, (link?.[2] === 'sea' || voyage) && !(fleets > 0));
   const odds = oddsLabel(def ? atk / def : Infinity);
-  const silo = my.territories.find((t) => t.id === from)?.buildings.find((x) => x.kind === 'silo')?.level ?? 0;
+  const missileKm = b ? km(a, b) : 0;
+  const missileReach = up?.missile_range_km ?? 3000;
   const go = async () => {
     const r = await act(() => rpc<any>('army_send', { p_from: from, p_to: to, p_units: units }), (x) =>
       x.kind === 'move' ? `On the way to ${name(to)}.` : `Attack on ${name(to)} launched! Arrives in ${until(x.arrive_at)}.`);
     if (r) {
       sound.play(r.kind === 'move' ? 'success' : 'tierup');
       reload();
+      refreshFleets();
       onClose();
     }
   };
@@ -323,11 +361,11 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
           <label className="field">
             <span>To</span>
             <select className="input" value={to} onChange={(e) => setTo(e.target.value)}>
-              {options.map((o) => <option key={o.id} value={o.id}>{o.name}{world?.territories.find((t) => t[0] === o.id)?.[2] !== o.id ? ` (${name(world!.territories.find((t) => t[0] === o.id)![2])})` : ''}</option>)}
+              {options.map((o) => <option key={o.id} value={o.id}>{o.name}{ctrlOf(o.id) !== o.id ? ` (${name(ctrlOf(o.id))})` : ''}</option>)}
             </select>
           </label>
         </div>
-        {Object.entries(src.garrison).filter(([k, v]) => v > 0 && k !== 'missile').map(([k, v]) => {
+        {Object.entries(have).filter(([, v]) => v > 0).map(([k, v]) => {
           const u = map.units.find((x) => x.id === k);
           return (
             <div key={k} className="row" style={{ gap: 10 }}>
@@ -340,31 +378,46 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
         })}
         {to && (
           <div className="card soft stack" style={{ gap: 6 }}>
-            <div className="row between small"><span>{allied ? 'Reinforce' : atWar ? 'Attack' : 'Not at war'} · {Math.round(dist)} km{link ? ` by ${link[2]}` : ' by air'}</span><span className="tnum">{chosen.length ? `${Math.round(minutes)} min` : ''}</span></div>
+            <div className="row between small">
+              <span>{allied ? 'Reinforce' : atWar ? 'Attack' : 'Not at war'} · {num(Math.round(dist))} km {link ? `by ${link[2]}` : voyage ? 'by troopship' : 'by air'}</span>
+              <span className="tnum">{chosen.length ? `${Math.round(minutes)} min` : ''}</span>
+            </div>
+            {voyage && (
+              <div className="row between small">
+                <span><Icon name="ship" size={15} /> Aboard {fleets} {fleets === 1 ? 'fleet' : 'fleets'}</span>
+                <span className={`tnum ${aboard > cap ? 'neg' : ''}`}>{num(aboard)} / {num(cap)} places</span>
+              </div>
+            )}
             {atWar && (
               <div className="row between small">
                 <span>Your attack {num(atk)} vs their defence about {num(def)}</span>
                 <span className={`chip ${odds.tone}`}>{odds.label}</span>
               </div>
             )}
-            {link?.[2] === 'sea' && !(units.naval > 0) && atWar && <span className="tiny muted">Crossing the sea without a fleet costs 40% of your attack.</span>}
-            {!groundAllowed && <span className="tiny neg">That’s not next door: only air wings can fly there.</span>}
+            {link?.[2] === 'sea' && !(fleets > 0) && atWar && <span className="tiny muted">Crossing the sea without a fleet costs 40% of your attack.</span>}
+            {blocked && <span className="tiny neg">{blocked}</span>}
             {!allied && !atWar && <span className="tiny neg">You’re not at war with {name(controller)}. Declare war first.</span>}
           </div>
         )}
-        {silo > 0 && (src.garrison.missile ?? 0) > 0 && atWar && (
-          <div className="row" style={{ gap: 8 }}>
-            <Icon name="rocket" size={20} />
-            <input className="grow" type="range" min={0} max={src.garrison.missile} value={missiles} onChange={(e) => setMissiles(Number(e.target.value))} aria-label="Missiles" />
-            <button className="btn small danger" disabled={!missiles} onClick={async () => {
-              const r = await act(() => rpc('missile_launch', { p_from: from, p_to: to, p_qty: missiles }), `${missiles} missiles launched.`);
-              if (r) { reload(); onClose(); }
-            }}>Launch {missiles}</button>
-          </div>
+        {(have.missile ?? 0) > 0 && atWar && (
+          silo > 0 && missileKm <= missileReach ? (
+            <div className="row" style={{ gap: 8 }}>
+              <Icon name="rocket" size={20} />
+              <input className="grow" type="range" min={0} max={have.missile} value={missiles} onChange={(e) => setMissiles(Number(e.target.value))} aria-label="Missiles to launch" />
+              <button className="btn small danger" disabled={!missiles} onClick={async () => {
+                const r = await act(() => rpc('missile_launch', { p_from: from, p_to: to, p_qty: missiles }), `${missiles} missiles launched.`);
+                if (r) { reload(); onClose(); }
+              }}>Launch {missiles}</button>
+            </div>
+          ) : (
+            <span className="tiny muted">
+              <Icon name="rocket" size={14} /> {silo < 1 ? 'Missiles launch from a silo: build one here, or move them to one.' : `Out of missile range: ${num(Math.round(missileKm))} km, and yours reach ${num(missileReach)} km.`}
+            </span>
+          )
         )}
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className={`btn ${atWar ? 'danger' : 'gold'}`} disabled={!chosen.length || !to || !groundAllowed || (!allied && !atWar)} onClick={go}>
+          <button className={`btn ${atWar ? 'danger' : 'gold'}`} disabled={!chosen.length || !to || !!blocked || (!allied && !atWar)} onClick={go}>
             {atWar ? 'Attack' : 'Send'}
           </button>
         </div>
