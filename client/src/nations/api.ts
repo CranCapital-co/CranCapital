@@ -283,3 +283,59 @@ export function useFleets(active: boolean) {
   }, [active]);
   return f;
 }
+
+// ---------------------------------------------------------------------------
+// Everyone's ships at sea, and the vital waterways
+// ---------------------------------------------------------------------------
+export interface WorldShips {
+  cargo: { id: number; owner: string; owner_no: number; nation: string | null; good: string; qty: number; from_city: string; to_city: string;
+    from_t: string | null; to_t: string | null; avoid: string[]; from_lng: number; from_lat: number; to_lng: number; to_lat: number; depart_at: string; arrive_at: string }[];
+  fleets: { id: number; nation: string; from_t: string; to_t: string; kind: string; depart_at: string; arrive_at: string; qty: number; avoid: string[] }[];
+}
+export interface Waterway {
+  id: string; name: string; kind: 'canal' | 'strait'; territory: string; lat: number; lng: number; path: [number, number][];
+  holder: string; holder_name: string; policy: 'open' | 'toll' | 'allies' | 'closed'; toll: number; mine: boolean; access: 'open' | 'toll' | 'closed';
+}
+
+// A shared poll: one request for everything that shows it, only while
+// something is on screen.
+function sharedPoll<T>(fn: string, every: number) {
+  let value: T | null = null;
+  const subs = new Set<(v: T) => void>();
+  let timer: any = 0;
+  let busy = false;
+  const refresh = () => {
+    if (busy || !subs.size) return;
+    busy = true;
+    rpc<T>(fn)
+      .then((v) => {
+        value = v;
+        subs.forEach((s) => s(v));
+      })
+      .catch(() => {})
+      .finally(() => { busy = false; });
+  };
+  const use = (active: boolean) => {
+    const [v, setV] = useState<T | null>(value);
+    useEffect(() => {
+      if (!active) return;
+      subs.add(setV);
+      if (subs.size === 1) timer = setInterval(() => !document.hidden && refresh(), every);
+      if (value) setV(value);
+      refresh();
+      return () => {
+        subs.delete(setV);
+        if (!subs.size) clearInterval(timer);
+      };
+    }, [active]);
+    return v;
+  };
+  return { use, refresh };
+}
+
+const worldShipsPoll = sharedPoll<WorldShips>('world_ships', 30000);
+export const useWorldShips = worldShipsPoll.use;
+export const refreshWorldShips = worldShipsPoll.refresh;
+const waterwaysPoll = sharedPoll<Waterway[]>('waterways', 60000);
+export const useWaterways = waterwaysPoll.use;
+export const refreshWaterways = waterwaysPoll.refresh;

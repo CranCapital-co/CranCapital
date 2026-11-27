@@ -393,6 +393,12 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       }
       const hits = map.queryRenderedFeatures(e.point, { layers: ['building-3d', 'building-flat'].filter((l) => map.getLayer(l)) });
       const bld = hits.find((h) => h.layer.id.startsWith('building') && h.id !== undefined);
+      // Further out the street map merges buildings into blocks: zoom in to
+      // pick one building.
+      if (bld && map.getZoom() < 14.2) {
+        map.flyTo({ center: e.lngLat, zoom: 16.4, duration: 700 });
+        return;
+      }
       if (bld) {
         useGame.setState({ selection: { building: Number(bld.id) } });
         st.open('property', { building: Number(bld.id) });

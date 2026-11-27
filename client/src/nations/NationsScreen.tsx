@@ -24,16 +24,9 @@ export default function NationsScreen({ onClose, initialSel }: { onClose: () => 
   const { data, error, retry } = useWorldMap();
   const world = useWorldState(20000);
   const { data: my, reload } = useApi(() => rpc<MyNation>('my_nation'), [me.nation], 15000);
-  // Where all the troops are, and your ships at sea.
+  // Where all the troops are (ships at sea come from the shared world view).
   const { data: troops } = useApi(() => rpc<TroopMap>('troop_map'), [me.nation], 20000);
-  const { data: shipList } = useApi(() => rpc<any[]>('my_ships'), [], 30000);
-  const ships = useMemo(
-    () => (shipList ?? []).filter((x) => x.status === 'in_transit').map((x) => ({
-      id: x.id, from: x.from as [number, number], to: x.to as [number, number], depart: x.depart_at, arrive: x.arrive_at,
-      label: `${Number(x.qty).toLocaleString()} ${catalogGood(x.good)} → ${cityName(x.to_city)}`,
-    })),
-    [shipList]
-  );
+  const ships: never[] = [];
   const [tab, setTab] = useState<Tab>('nation');
   const [talkTo, setTalkTo] = useState<string | null>(null);
   const talk = (id: string) => { setTalkTo(id); setTab('talk'); };
@@ -218,6 +211,7 @@ function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onCl
             )
           )}
           <button className="btn small" onClick={() => onTalk(controller)}><Icon name="chat" size={16} /> Talk</button>
+          {info && info.status === 'active' && <SendMoneyButton nation={controller} name={info.name} leader={info.leader?.name ?? null} onDone={done} />}
           {!atWar && <button className="btn small ghost" onClick={() => doAct('diplo_envoy', { p_nation: controller }, 'Envoy sent: relations improved.')}><Icon name="mail" size={16} /> Envoy · $2,500</button>}
           {!atWar && !allied && <button className="btn small ghost" onClick={() => doAct('diplo_denounce', { p_nation: controller }, 'Denounced.')}>Denounce</button>}
           {!atWar && !allied && !info?.treaty && level >= (my.unlocks.nap ?? 6) && (
@@ -233,6 +227,56 @@ function SelectedCard({ id, ctx, onClose, onTalk }: { id: string; ctx: Ctx; onCl
         <button className="btn small" onClick={() => ctx.sendFrom(id)}><Icon name="swords" size={16} /> Send troops from here</button>
       )}
     </section>
+  );
+}
+
+// Send money to any country: an AI's treasury, or a player-led country's leader.
+function SendMoneyButton({ nation, name, leader, onDone }: { nation: string; name: string; leader: string | null; onDone: () => void }) {
+  const cash = useGame((s) => s.me?.cash ?? 0);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('10000');
+  const dollars = Math.floor(Number(text) || 0);
+  const go = async () => {
+    const r = await act(() => rpc<any>('send_money', { p_nation: nation, p_amount: dollars * 1000 }), (x) =>
+      `Sent ${money(dollars * 1000, { cents: false })} to ${name}.${x?.rel_delta > 0 ? ` Relations +${x.rel_delta}.` : ''}`);
+    if (r) {
+      sound.play('coins');
+      setOpen(false);
+      refreshMe();
+      onDone();
+    }
+  };
+  return (
+    <>
+      <button className="btn small ghost" onClick={() => setOpen(true)}><Icon name="cash" size={16} /> Send money</button>
+      {open && (
+        <Modal title={`Send money to ${name}`} onClose={() => setOpen(false)}>
+          <div className="stack">
+            <p className="small" style={{ margin: 0 }}>
+              {leader
+                ? <>It goes to <b>{leader}</b>, who leads {name}. Between players you can send up to a quarter of your net worth a day.</>
+                : <>It goes into {name}&rsquo;s treasury. Gifts build goodwill, more for bigger gifts (up to +25 relations a day with each country).</>}
+            </p>
+            <label className="field">
+              <span>Amount ($)</span>
+              <input className="input" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ''))} />
+            </label>
+            <div className="row wrap" style={{ gap: 6 }}>
+              {[1000, 10000, 100000, 1000000].map((v) => (
+                <button key={v} className="btn tiny ghost" onClick={() => setText(String(v))}>{money(v * 1000, { compact: true, cents: false })}</button>
+              ))}
+            </div>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="tiny muted">You have {money(cash, { compact: true, cents: false })}</span>
+              <span className="row" style={{ gap: 8 }}>
+                <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+                <button className="btn gold" disabled={dollars < 1000 || dollars * 1000 > cash} onClick={go}>Send {money(dollars * 1000, { compact: true, cents: false })}</button>
+              </span>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -300,6 +344,12 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
   const [missiles, setMissiles] = useState(0);
   const controller = ctrlOf(to);
   const { data: info } = useApi(() => (to ? rpc<any>('nation_info', { p_id: controller }) : Promise.resolve(null)), [to, controller]);
+  // A voyage (no border between them, fleets going): the real sea route.
+  const isVoyage = !!to && (units.naval ?? 0) > 0 && !map.links.some((l) => (l[0] === from && l[1] === to) || (l[1] === from && l[0] === to));
+  const { data: route } = useApi(
+    () => (isVoyage ? rpc<{ km?: number; tolls?: number; via?: string[]; blocked?: string; blocked_name?: string } | null>('sea_route_info', { p_from: from, p_to: to }) : Promise.resolve(null)),
+    [isVoyage, from, to]
+  );
   if (!src || !a) return null;
   const link = map.links.find((l) => (l[0] === from && l[1] === to) || (l[1] === from && l[0] === to));
   const b = map.territories.find((t) => t.id === to);
@@ -309,7 +359,7 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
   const voyage = !link && fleets > 0;
   const cap = fleets * (up?.troop_capacity ?? 0);
   const aboard = cargoOf(units);
-  const dist = link ? link[3] : b ? (voyage ? voyageKm(b) : km(a, b)) : 0;
+  const dist = link ? link[3] : b ? (voyage ? route?.km ?? voyageKm(b) : km(a, b)) : 0;
   const speed = Math.min(...chosen.map(([k]) => (k === 'missile' ? 120 : map.units.find((u) => u.id === k)?.speed ?? 100)));
   const minutes = chosen.length ? 2 + dist / speed : 0;
   const mine = controller === my.nation?.id;
@@ -322,6 +372,7 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
     else if (!link && airOnly && km(a, b) > 2500) blocked = 'Too far: air wings reach 2,500 km.';
     else if (!link && !airOnly && !voyage) blocked = 'That’s not next door: ground forces cross one border at a time. Take fleets along to sail them there.';
     else if (voyage && (a.landlocked || b.landlocked)) blocked = 'Fleets sail only between coasts.';
+    else if (voyage && route?.blocked) blocked = `The ${route.blocked_name} is closed to you, and there's no other way there by sea.`;
     else if (voyage && !(up?.troop_capacity)) blocked = 'Upgrade your fleets to troopships (Military, Upgrades) to sail troops overseas.';
     else if (voyage && dist > (up?.troop_range_km ?? 0)) blocked = `Too far: your troopships reach ${num(up!.troop_range_km)} km.`;
     else if (voyage && (units.air ?? 0) > 0 && dist > 2500) blocked = 'Air wings reach 2,500 km: send them separately.';
@@ -387,6 +438,12 @@ function ArmyDialog({ ctx, from: from0, to: to0, onClose }: { ctx: Ctx; from: st
                 <span><Icon name="ship" size={15} /> Aboard {fleets} {fleets === 1 ? 'fleet' : 'fleets'}</span>
                 <span className={`tnum ${aboard > cap ? 'neg' : ''}`}>{num(aboard)} / {num(cap)} places</span>
               </div>
+            )}
+            {voyage && route && !route.blocked && ((route.via ?? []).length > 0 || (route.tolls ?? 0) > 0) && (
+              <span className="tiny muted">
+                Through {(route.via ?? []).map((w) => w.replace(/_/g, ' ')).join(', ')}
+                {(route.tolls ?? 0) > 0 ? `; tolls ${money(route.tolls!, { cents: false })}` : ''}.
+              </span>
             )}
             {atWar && (
               <div className="row between small">

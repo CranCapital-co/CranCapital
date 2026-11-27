@@ -5,7 +5,7 @@
 // Tap a country out there to open the Nation screen on it.
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGame } from '../lib/store';
-import { useFleets, useWorldMap, useWorldState } from './api';
+import { useFleets, useWaterways, useWorldMap, useWorldShips, useWorldState } from './api';
 import { useWorldView } from './worldView';
 
 const WorldMap = lazy(() => import('./WorldMap'));
@@ -31,6 +31,9 @@ function Attached({ active }: { active: boolean }) {
   const world = useWorldState(v.open ? 20000 : 30000, active);
   // Warships: yours, your allies', and enemy fleets coming at you.
   const fleets = useFleets(active && !!me.nation);
+  // Everyone's ships at sea, and the vital waterways.
+  const worldShips = useWorldShips(active);
+  const waterways = useWaterways(active);
   if (!data || !v.map) return null;
   return (
     <Suspense fallback={null}>
@@ -43,9 +46,11 @@ function Attached({ active }: { active: boolean }) {
         selected={v.open ? v.selected : null}
         targets={v.open ? v.targets : undefined}
         troops={v.open ? v.troops : null}
-        ships={v.open ? v.ships : []}
         padding={v.open ? v.padding : {}}
         fleets={fleets}
+        worldShips={worldShips}
+        waterways={waterways}
+        meNo={me.player_no ?? null}
         onSelect={(id) => {
           const cb = useWorldView.getState().onSelect;
           if (cb) cb(id);

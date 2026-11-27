@@ -32,8 +32,10 @@ test('press everything', { timeout: 300_000 }, async () => {
     }, { noWaitAfter: true }); // level-ups come one after another
     const shot = async (name) => process.env.SHOTS && page.screenshot({ path: `${process.env.SHOTS}/${name}.png` });
 
-    // Sign up and lead a country with a game city.
+    // Sign up and lead a country with a game city (with the head start new
+    // players get).
     await q(`update game.nations set leader_id = null, leader_since = null where id = 'gbr'`);
+    await q(`update game.config set value = 1 where key = 'head_start'`);
     await page.goto(BASE + '#/play');
     const id = Date.now().toString(36);
     const name = 'Presser' + id.slice(-5);
@@ -50,6 +52,14 @@ test('press everything', { timeout: 300_000 }, async () => {
     await page.getByRole('button', { name: /^Start in London/ }).click({ timeout: 20_000 });
     await page.locator('.renown-badge').waitFor({ timeout: 30_000 });
     const me = await one('select id from game.players where display_name = $1', [name]);
+    // The head start: shown once, saying what it is and what it does.
+    await page.getByText('Your head start').waitFor({ timeout: 20_000 });
+    assert.ok(await page.getByText(/in cash/).isVisible());
+    await shot('0-head-start');
+    await page.getByRole('button', { name: /Let.s go/ }).click();
+    await q(`update game.config set value = 0 where key = 'head_start'`);
+    assert.ok(await one(`select 1 from game.ledger where player_id = $1 and kind = 'head_start'`, [me.id]), 'head start paid');
+    assert.ok(await one(`select 1 from game.head_starts where player_id = $1 and seen_at is not null`, [me.id]), 'and shown once');
     await page.waitForFunction(() => window.__ccMap && window.__ccMap.loaded(), null, { timeout: 30_000 });
     await shot('1-city');
 

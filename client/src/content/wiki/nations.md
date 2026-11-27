@@ -33,22 +33,34 @@ If you step down, you can lead again after 12 hours. If you are away for 14 days
 
 - **Declaring war:** needs Renown level 5. The target's allies join them. You can't attack a country you have a truce or pact with, or a new leader still under protection.
 - **Moving troops:** troops cross one border (land or sea) at a time. On the world map, badges show how many troops you (gold), your allies (green) and your enemies (red) have in each territory, and each army on the move shows its size and how far it has got. The Military tab lists your armies with a progress bar, and each war shows how far your invasion has reached. Air wings reach 2,500 km.
-- **Troopships:** with the Troopships upgrade, fleets carry troops from any coast to any coast in range, not just next door: over the sea to reinforce your own land or to land on an enemy's shore. Each fleet carries 20 soldiers at level 1 and 10 more each level, up to 3,000 km (2,000 km more each level). Infantry take one place aboard, artillery two, armour three and missiles five. Send them from the Send troops window: pick fleets and troops, then any coast in reach.
+- **Troopships:** with the Troopships upgrade, fleets carry troops from any coast to any coast in range, not just next door: over the sea to reinforce your own land or to land on an enemy's shore. Each fleet carries 20 soldiers at level 1 and 10 more each level, up to 4,000 km by sea (3,000 km more each level). Infantry take one place aboard, artillery two, armour three and missiles five. Send them from the Send troops window: pick fleets and troops, then any coast in reach.
 - **Missiles:** they move like troops (one border at a time, or by troopship), but only between territories you hold. They launch from a silo at enemy land in range (3,000 km to start), so you can stock a silo near the front.
 - **Upgrades** (Military tab): Missile range (+1,500 km a level), Warheads (+25% damage a level) and Guidance (enemy air defence stops 15% fewer a level) need missile research and are expensive: $250,000 for level 1, doubling each level up to level 5. Troopships need naval research and are cheap: $15,000 to $120,000. A new leader starts without them.
-- **Warships on the map:** zoom in on the sea to see your fleets as little warships, riding at anchor off your coast or sailing their sea lanes in formation with their wake behind them. You also see your allies' fleets, and enemy fleets sailing at you.
+- **Sea routes:** fleets and cargo ships sail real sea lanes around the land, from coast to coast, never across it. A voyage's distance is the length of its sea route, so sailing round a continent takes longer than the straight line would suggest. The Send troops window shows the route's distance, the waterways on the way and any tolls.
+- **Ships on the map:** everyone's warships and cargo ships at sea are on the world map, with the route they sail. Further out they're a dot and a label (whose they are, and how many or what they carry); zoom in and each becomes a little 3D ship, rocking on the swell with its wake behind it. Your fleets in port ride at anchor off your coast.
+- **Allies overseas:** an ally's troops only help defend your land if they can get there: from land next to it, or with a navy (3 fleets or more). To send troops to an ally across the sea, send fleets with them or have a navy.
 - **Battles:** your attack is compared with their defence (troops, local militia and forts). The stronger side wins and loses less. Attacking across the sea without a fleet costs 40% of your attack (troopships always sail with their fleet). A ground victory occupies the territory.
 - **Odds:** the Send troops window shows them before you attack.
 - **War score:** grows with the land you occupy and the battles you win.
 - **Peace:** propose a white peace (everyone goes home), demand the land you hold, or demand reparations. You can also surrender, which gives the enemy what they hold and a quarter of your cash. A country that loses all its land falls. An agreed peace brings a 24-hour truce; surrendering or being conquered doesn't, so the fighting can carry on next door.
 
-**Talking to countries.** Open the **Talk** tab (or tap a country, then **Talk**) and message any country. AI governments always answer, in their own voice, about the world as it is: their wars and alliances, their rank, what they think of you and why.
+**Talking to countries.** Open the **Talk** tab (or tap a country, then **Talk**) and message any country. AI governments always answer, in their own voice, about the world as it is: their wars and alliances, their rank, what they think of you and why. Ask them anything: their economy, army, government, people, plans, what they think of another country, the state of the world, or advice.
 
 - **Ask them things:** "Will you ally with us?", "Why won't you ally with us?", "Can we sign a non-aggression pact?", "Will you help me attack France?", "Make me an offer", "How are things?" or "What do you think of us?"
 - **Offers pop up** for you to accept or decline: an alliance, a pact, peace (or peace for a price), a payment for their goodwill (sometimes with a pact or an alliance), or joining your war against a country you name, for a fee.
 - **Personality matters.** Diplomatic and mercantile governments are easy to deal with (mercantile ones will do almost anything for money). Defensive ones are wary. Expansionist and aggressive ones are hard bargainers and expensive.
 - **Manners matter.** Insults and threats lower relations (an aggressive government may denounce you on the spot). Pestering them with lots of messages wears out their patience. Compliments help a little each day, and gifts help a lot.
 - A country led by a player gets your message as a notification.
+
+**Vital waterways.** The Suez and Panama canals and the straits of Gibraltar, the Bosphorus, Hormuz, Bab-el-Mandeb, Malacca and Denmark are marked on the world map. Whoever holds the country one is in decides who may sail through, from the World tab:
+
+- **Open:** everyone passes.
+- **Toll:** everyone pays a toll per ship (you set it, up to $100,000), paid to you; your allies pass free.
+- **Allies only**, or **Closed** to everyone.
+
+Countries at war with the holder can never pass. Ships shut out sail the long way round (Britain to India round Africa instead of through Suez), or can't get there at all: the Black Sea, the Baltic, the Persian Gulf and the Red Sea each have only one way in. When a waterway changes hands it opens again.
+
+**Sending money.** Tap any country and press **Send money**. An AI country puts it in its treasury, thanks you, and likes you more (more for bigger gifts, up to +25 relations a day, shared with chat). A player-led country's leader receives it; you can send up to a quarter of your net worth a day to other players, once your account is 3 days old.
 
 **Diplomacy.**
 
