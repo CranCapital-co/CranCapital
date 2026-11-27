@@ -5,9 +5,31 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LOCAL_GLYPHS } from '../map/style';
-import type { FleetMap, WorldMapData, WorldState } from './api';
+import type { FleetMap, WorldMapData, WorldState, WorldShips, Waterway } from './api';
 import { WORLD_ZOOM } from './worldView';
-import { FLEET_COLORS, anchorOf, along, drawWarship, lane as seaLane } from './fleets';
+import { anchorOf, along } from './fleets';
+import { countryLane, dockPoint, loadSea, portLane } from './sea';
+import { ShipLayer, SHIP3D_MIN_ZOOM, type Ship3D } from './ships3d';
+import { goodName } from '../lib/store';
+
+type Rel = 'mine' | 'ally' | 'enemy' | 'other';
+const REL_COLOR: Record<Rel, string> = { mine: '#f5c451', ally: '#6fb5ff', enemy: '#e0533f', other: '#c7cfd6' };
+const pt = (x: number, y: number, properties: Record<string, unknown>) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [x, y] }, properties });
+// A line's length in degrees (for spacing ships along it).
+const lineLen = (p: [number, number][]) => {
+  let s = 0;
+  for (let i = 1; i < p.length; i++) s += Math.hypot((p[i][0] - p[i - 1][0]) * Math.cos((p[i][1] * Math.PI) / 180), p[i][1] - p[i - 1][1]);
+  return s;
+};
+const byNation = (s: WorldState | null, id: string) => s?.nations.find((n) => n.id === id)?.name ?? id;
+const goodLabel = (id: string) => {
+  try {
+    return goodName(id).toLowerCase();
+  } catch {
+    return id;
+  }
+};
+const WATERWAY_COLOR = ['match', ['get', 'policy'], 'open', '#5fd0ff', 'toll', '#f5c451', 'allies', '#ff9f43', '#ff5a4a'];
 
 export interface WorldMapProps {
   map: WorldMapData;
@@ -28,6 +50,12 @@ export interface WorldMapProps {
   attachTo?: MLMap | null;
   // Warships in port and at sea (yours, your allies', enemies' coming at you).
   fleets?: FleetMap | null;
+  // Everyone's cargo ships and warships at sea.
+  worldShips?: WorldShips | null;
+  // The vital waterways (Suez, Panama...), who holds them and who may pass.
+  waterways?: Waterway[] | null;
+  // Your player number (to pick out your own cargo ships).
+  meNo?: number | null;
 }
 
 export interface TroopMap {
@@ -44,14 +72,15 @@ function shade(hex: string, k: number) {
   return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
 }
 
-export default function WorldMap({ map: data, shapes, state, me, selected, onSelect, mode = 'play', targets, padding, troops, ships, attachTo, fleets }: WorldMapProps) {
+export default function WorldMap({ map: data, shapes, state, me, selected, onSelect, mode = 'play', targets, padding, troops, ships, attachTo, fleets, worldShips, waterways, meNo }: WorldMapProps) {
   // Our layer and source names: prefixed when they share the city's map.
   const P = attachTo ? 'w-' : '';
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const ready = useRef(false);
-  const latest = useRef({ state, me, selected, targets, mode, troops, ships, fleets });
-  latest.current = { state, me, selected, targets, mode, troops, ships, fleets };
+  const latest = useRef({ state, me, selected, targets, mode, troops, ships, fleets, worldShips, waterways, meNo });
+  latest.current = { state, me, selected, targets, mode, troops, ships, fleets, worldShips, waterways, meNo };
+  const shipLayer = useRef<ShipLayer | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -140,6 +169,19 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       });
     }
     (m.getSource(P + 'troops') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: badges });
+    // The vital waterways: the channel, and a marker saying who lets ships through.
+    const wws = latest.current.waterways ?? [];
+    const status = (w: Waterway) =>
+      (w.policy === 'open' ? 'Open' : w.policy === 'toll' ? 'Toll $' + Math.round(w.toll / 1000).toLocaleString() : w.policy === 'allies' ? 'Allies only' : 'Closed')
+      + (w.mine ? ' (yours)' : w.access === 'closed' && w.policy !== 'closed' ? ' (closed to you)' : '');
+    (m.getSource(P + 'waterways') as GeoJSONSource)?.setData({
+      type: 'FeatureCollection',
+      features: wws.map((w) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: w.path }, properties: { policy: w.policy, canal: w.kind === 'canal' } })) as any,
+    });
+    (m.getSource(P + 'waterway-pts') as GeoJSONSource)?.setData({
+      type: 'FeatureCollection',
+      features: wws.map((w) => pt(w.lng, w.lat, { policy: w.policy, label: w.name + '\n' + status(w) + ' · ' + w.holder_name })) as any,
+    });
     drawMoves();
   };
 
@@ -150,84 +192,101 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     const now = Date.now();
     const lines: any[] = [];
     const dots: any[] = [];
-    // Fleets at sea sail a curved lane between anchorages, not centre to centre.
-    const fl = latest.current.fleets;
-    const sailing = new Map((fl?.sailing ?? []).map((f) => [f.id, f]));
-    const lane = (from: string, to: string) => {
-      const a = byId.current.get(from);
-      const b = byId.current.get(to);
-      return a && b ? seaLane(anchorOf(from, a.lat, a.lng), anchorOf(to, b.lat, b.lng)) : null;
+    const prog = (d: string, a: string) => {
+      const t0 = new Date(d).getTime();
+      const t1 = new Date(a).getTime();
+      return Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
     };
-    const seen = new Set<number>();
+    // How a country stands with you: yours, an ally, an enemy, or neither.
+    const myAlliance = (s?.alliances ?? []).find((al) => mine && al.members.includes(mine));
+    const enemies = new Set<string>();
+    if (mine) for (const w of s?.wars ?? []) (w.att.includes(mine) ? w.def : w.def.includes(mine) ? w.att : []).forEach((x) => enemies.add(x));
+    const relOf = (n: string | null | undefined): Rel => (!n ? 'other' : n === mine ? 'mine' : myAlliance?.members.includes(n) ? 'ally' : enemies.has(n) ? 'enemy' : 'other');
+    const near = (id: string): [number, number] | null => {
+      const t = byId.current.get(id);
+      return t ? [t.lng, t.lat] : null;
+    };
+    // Fleets at sea: everyone's (rough numbers), with exact numbers for your
+    // own and your allies'. They sail real sea lanes, coast to coast.
+    const fl = latest.current.fleets;
+    const ws = latest.current.worldShips;
+    const exact = new Map((fl?.sailing ?? []).map((f) => [f.id, f]));
+    const fleetsAtSea = new Map<number, { id: number; nation: string; from: string; to: string; depart_at: string; arrive_at: string; qty: number; troops: number | null; avoid: string[] }>();
+    for (const f of ws?.fleets ?? []) fleetsAtSea.set(f.id, { id: f.id, nation: f.nation, from: f.from_t, to: f.to_t, depart_at: f.depart_at, arrive_at: f.arrive_at, qty: f.qty, troops: null, avoid: f.avoid ?? [] });
+    for (const f of fl?.sailing ?? []) {
+      const w = fleetsAtSea.get(f.id);
+      fleetsAtSea.set(f.id, { id: f.id, nation: f.n, from: f.from, to: f.to, depart_at: f.depart_at, arrive_at: f.arrive_at, qty: f.qty, troops: f.troops, avoid: w?.avoid ?? [] });
+    }
+    const fleetPath = (f: { nation: string; from: string; to: string; avoid: string[] }) => {
+      const a = near(f.from);
+      const b = near(f.to);
+      return a && b ? countryLane(f.from, a, f.to, b, f.avoid) : null;
+    };
     for (const mv of s?.moves ?? []) {
+      if (fleetsAtSea.has(mv.id)) continue; // drawn with the ships below
       const a = byId.current.get(mv.from);
       const b = byId.current.get(mv.to);
       if (!a || !b) continue;
-      const t0 = new Date(mv.depart_at).getTime();
-      const t1 = new Date(mv.arrive_at).getTime();
-      const k = Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
+      const k = prog(mv.depart_at, mv.arrive_at);
       // Short way round the antimeridian.
       let bl = b.lng;
       if (bl - a.lng > 180) bl -= 360;
       if (a.lng - bl > 180) bl += 360;
       const kind = mv.nation === mine ? 'mine' : mv.kind === 'move' ? 'move' : 'attack';
       const size = latest.current.troops?.moves.find((x) => x.id === mv.id)?.size;
-      const path = sailing.has(mv.id) ? lane(mv.from, mv.to) : null;
-      if (path) seen.add(mv.id);
-      const at = path ? along(path, k) : [a.lng + (bl - a.lng) * k, a.lat + (b.lat - a.lat) * k];
-      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path ?? [[a.lng, a.lat], [bl, b.lat]] }, properties: { kind } });
+      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [bl, b.lat]] }, properties: { kind } });
       dots.push({
         type: 'Feature',
-        geometry: { type: 'Point', coordinates: [at[0], at[1]] },
-        properties: { kind, fleet: !!path, missile: mv.kind === 'missile', label: size != null ? `${mv.kind === 'missile' ? '🚀' : '⚔'} ${size} · ${Math.round(k * 100)}%` : '' },
+        geometry: { type: 'Point', coordinates: [a.lng + (bl - a.lng) * k, a.lat + (b.lat - a.lat) * k] },
+        properties: { kind, missile: mv.kind === 'missile', label: size != null ? `${mv.kind === 'missile' ? 'Missiles' : 'Army'} ${size} · ${Math.round(k * 100)}%` : '' },
       });
     }
-    // The warships themselves: one to three models per fleet, by its size,
-    // sailing in formation or riding at anchor off the coast.
-    const warships: any[] = [];
-    const formation = (qty: number) => (qty >= 10 ? 3 : qty >= 3 ? 2 : 1);
-    const addShips = (x: number, y: number, hdg: number, rel: string, qty: number, label: string, moving: boolean) => {
-      for (let i = 0; i < formation(qty); i++) {
-        warships.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [x, y] },
-          properties: { img: `cc-warship-${rel}${moving ? '' : '-still'}`, hdg, slot: i, rel, label: i === 0 ? label : '' },
-        });
-      }
-    };
-    for (const f of fl?.sailing ?? []) {
-      const path = lane(f.from, f.to);
+    // Ships: a label (and a dot) further out, a 3D model closer in.
+    const shipLabels: any[] = [];
+    const models: Ship3D[] = [];
+    const LANE = { mine: 'mine', ally: 'move', enemy: 'attack', other: 'other' } as const;
+    for (const f of fleetsAtSea.values()) {
+      const path = fleetPath(f);
       if (!path) continue;
-      const t0 = new Date(f.depart_at).getTime();
-      const t1 = new Date(f.arrive_at).getTime();
-      const k = Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
-      if (!seen.has(f.id)) lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: f.rel === 'mine' ? 'mine' : f.rel === 'ally' ? 'move' : 'attack' } });
-      const [x, y, hdg] = along(path, k);
-      const n = f.rel === 'enemy' ? '~' + f.qty : String(f.qty);
-      addShips(x, y, hdg, f.rel, f.qty, `${n} ${f.qty === 1 ? 'fleet' : 'fleets'}${f.troops ? ` · ${f.troops} troops` : ''}`, true);
+      const rel = relOf(f.nation);
+      const k = prog(f.depart_at, f.arrive_at);
+      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: LANE[rel] } });
+      const len = lineLen(path);
+      const n = rel === 'mine' || rel === 'ally' ? String(f.qty) : '~' + f.qty;
+      const label = `${byNation(s, f.nation)}: ${n} ${f.qty === 1 ? 'fleet' : 'fleets'}${f.troops ? ` · ${f.troops} troops` : ''}`;
+      const ships = f.qty >= 10 ? 3 : f.qty >= 3 ? 2 : 1;
+      for (let i = 0; i < ships; i++) {
+        // Escorts follow the flagship along the lane.
+        const [x, y, hdg] = along(path, Math.max(0, k - (i * 0.6) / Math.max(0.6, len)));
+        models.push({ lng: x, lat: y, hdg, kind: 'war', color: REL_COLOR[rel], moving: true, seed: f.id * 3 + i });
+        if (i === 0) shipLabels.push(pt(x, y, { label, rel, ship: 'war' }));
+      }
     }
-    const order = { mine: 0, ally: 1, enemy: 2 } as const;
     (fl?.docked ?? []).forEach((d, i) => {
       const t = byId.current.get(d.t);
       if (!t) return;
-      const [ax, ay] = anchorOf(d.t, t.lat, t.lng);
-      // Side by side when more than one navy lies off the same coast; lying
-      // along the coast, rocking gently.
-      const shift = order[d.rel] * 0.55;
-      const hdg = (Math.atan2(ax - t.lng, ay - t.lat) * 180) / Math.PI + 90 + Math.sin(now / 1500 + i) * 4;
-      addShips(ax + shift, ay - shift * 0.4, hdg, d.rel, d.qty, `${d.rel === 'enemy' ? '~' : ''}${d.qty} ${d.qty === 1 ? 'fleet' : 'fleets'} in port`, false);
+      const at = dockPoint(d.t, [t.lng, t.lat]) ?? anchorOf(d.t, t.lat, t.lng);
+      const shift = ({ mine: 0, ally: 0.35, enemy: 0.7 } as const)[d.rel] ?? 0;
+      const ships = d.qty >= 10 ? 3 : d.qty >= 3 ? 2 : 1;
+      for (let j = 0; j < ships; j++) {
+        models.push({ lng: at[0] + shift + j * 0.22, lat: at[1] - j * 0.12, hdg: 60 + ((i * 47) % 90), kind: 'war', color: REL_COLOR[d.rel], moving: false, seed: i * 7 + j });
+      }
+      shipLabels.push(pt(at[0] + shift, at[1], { label: `${d.rel === 'enemy' ? '~' : ''}${d.qty} ${d.qty === 1 ? 'fleet' : 'fleets'} in port`, rel: d.rel, ship: 'war' }));
     });
-    (m.getSource(P + 'fleets') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: warships });
-    // Your ships: a dashed sea lane and a boat sailing along it.
-    for (const sh of latest.current.ships ?? []) {
-      const t0 = new Date(sh.depart).getTime();
-      const t1 = new Date(sh.arrive).getTime();
-      const k = Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
-      const path = seaLane(sh.from, sh.to, 0.18); // port to port, around the land
-      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: 'ship' } });
+    // Everyone's cargo ships, port to port, with whose they are and what they carry.
+    const meNo = latest.current.meNo;
+    for (const c of ws?.cargo ?? []) {
+      const path = portLane([c.from_lng, c.from_lat], c.from_t, [c.to_lng, c.to_lat], c.to_t, c.avoid ?? []);
+      if (!path) continue;
+      const yours = c.owner_no === meNo;
+      const k = prog(c.depart_at, c.arrive_at);
+      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: yours ? 'mine' : 'ship' } });
       const [x, y, hdg] = along(path, k);
-      dots.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [x, y] }, properties: { kind: 'ship', ship: true, hdg, label: `${sh.label} · ${Math.round(k * 100)}%` } });
+      models.push({ lng: x, lat: y, hdg, kind: 'cargo', color: yours ? '#f5c451' : '#e8eef2', moving: true, seed: c.id });
+      shipLabels.push(pt(x, y, { label: `${yours ? 'Your ship' : c.owner}: ${Number(c.qty).toLocaleString()} ${goodLabel(c.good)}`, rel: yours ? 'mine' : 'cargo', ship: 'cargo' }));
     }
+    (m.getSource(P + 'fleets') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: shipLabels });
+    shipLayer.current?.set(models);
     (m.getSource(P + 'moves') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: lines });
     (m.getSource(P + 'movers') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: dots });
     const pulse = (now % 1600) / 1600;
@@ -258,6 +317,12 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         const firstReal = m.getStyle().layers.find((l) => l.type !== 'background')?.id;
         for (const l of ws.layers) if (!m.getLayer(l.id)) m.addLayer(l, l.type === 'background' ? firstReal : undefined);
         addMapImages(m);
+        // Ships as 3D models when you zoom in.
+        if (!m.getLayer(P + 'ship3d')) {
+          shipLayer.current = new ShipLayer(P + 'ship3d');
+          m.addLayer(shipLayer.current);
+        }
+        loadSea().then(() => drawMoves());
         mapRef.current = m;
         ready.current = true;
         paint();
@@ -281,6 +346,8 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         try {
           if (!m.getStyle()) return;
           for (const l of ws.layers) if (m.getLayer(l.id)) m.removeLayer(l.id);
+          if (m.getLayer(P + 'ship3d')) m.removeLayer(P + 'ship3d');
+          shipLayer.current = null;
           for (const id of Object.keys(ws.sources)) if (m.getSource(id)) m.removeSource(id);
         } catch {
           /* the map is closing */
@@ -351,7 +418,7 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gen, attachTo]);
 
-  useEffect(paint, [state, me, selected, targets, mode, troops, ships, fleets]);
+  useEffect(paint, [state, me, selected, targets, mode, troops, ships, fleets, worldShips, waterways]);
 
   // Keep the selected country in view, clear of the side panel.
   useEffect(() => {
@@ -399,6 +466,8 @@ function worldStyle(P: string, attached: boolean) {
           [P + 'battles']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
           [P + 'troops']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
           [P + 'fleets']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'waterways']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'waterway-pts']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
         };
   const layers: any[] = [
           { id: P + 'ocean', type: 'background', paint: { 'background-color': OCEAN } },
@@ -415,16 +484,16 @@ function worldStyle(P: string, attached: boolean) {
           {
             id: P + 'moves', type: 'line', source: P + 'moves',
             paint: {
-              'line-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', 'ship', '#e8f4ff', '#ff6b5a'],
-              'line-width': ['match', ['get', 'kind'], 'ship', 1.4, 2], 'line-dasharray': [2, 1.5], 'line-opacity': ['match', ['get', 'kind'], 'ship', 0.55, 0.9],
+              'line-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', 'ship', '#e8f4ff', 'other', '#aab6bf', '#ff6b5a'],
+              'line-width': ['match', ['get', 'kind'], 'ship', 1.2, 'other', 1.2, 2], 'line-dasharray': [2, 1.5], 'line-opacity': ['match', ['get', 'kind'], 'ship', 0.45, 'other', 0.45, 0.9],
             },
           },
           {
             id: P + 'movers', type: 'circle', source: P + 'movers', filter: ['!', ['get', 'ship']],
             paint: {
               // A fleet's dot gives way to its warships once you zoom in.
-              'circle-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
-              'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
+              'circle-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['to-boolean', ['get', 'fleet']], 0, 1]],
+              'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['to-boolean', ['get', 'fleet']], 0, 1]],
               'circle-radius': ['case', ['get', 'missile'], 4, 6],
               'circle-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', '#ff6b5a'],
               'circle-stroke-color': '#0a1820', 'circle-stroke-width': 1.5,
@@ -435,28 +504,40 @@ function worldStyle(P: string, attached: boolean) {
             layout: { 'icon-image': 'cc-ship', 'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.55, 4, 0.9], 'icon-rotate': ['get', 'hdg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true },
           },
           {
-            id: P + 'warships', type: 'symbol', source: P + 'fleets', minzoom: 2.4,
-            layout: {
-              'icon-image': ['get', 'img'],
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 2.4, 0.4, 4, 0.7, 6, 1.05, 9, 1.6],
-              'icon-rotate': ['get', 'hdg'],
-              'icon-rotation-alignment': 'map',
-              'icon-pitch-alignment': 'map',
-              // Escorts sail behind and to either side of the flagship.
-              'icon-offset': ['match', ['get', 'slot'], 1, ['literal', [-20, 40]], 2, ['literal', [20, 40]], ['literal', [0, 0]]],
-              'icon-allow-overlap': true,
-              'icon-ignore-placement': true,
-              'symbol-sort-key': ['get', 'slot'],
-            },
-            paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], 2.4, 0, 3.1, 1] },
+            // The vital waterways: the channel (a canal drawn across the land it cuts).
+            id: P + 'waterway-lines', type: 'line', source: P + 'waterways', minzoom: 2,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': WATERWAY_COLOR, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1.5, 6, 4], 'line-opacity': 0.85 },
           },
           {
-            id: P + 'warship-labels', type: 'symbol', source: P + 'fleets', minzoom: 3.3, filter: ['!=', ['get', 'label'], ''],
-            layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 2.2], 'text-anchor': 'top', 'text-allow-overlap': true },
+            id: P + 'waterway-labels', type: 'symbol', source: P + 'waterway-pts', minzoom: 2.6,
+            layout: {
+              'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 10.5, 'text-anchor': 'top', 'text-offset': [0, 1.4],
+              'text-allow-overlap': true, 'text-max-width': 14,
+            },
+            paint: { 'text-color': WATERWAY_COLOR, 'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4 },
+          },
+          {
+            // Ships further out: a dot (the 3D models take over closer in).
+            id: P + 'ship-dots', type: 'circle', source: P + 'fleets', maxzoom: SHIP3D_MIN_ZOOM,
             paint: {
-              'text-color': ['match', ['get', 'rel'], 'mine', '#ffe39a', 'ally', '#cfe6ff', '#ffb3a8'],
+              'circle-radius': ['case', ['==', ['get', 'ship'], 'war'], 4.5, 3.5],
+              'circle-color': ['match', ['get', 'rel'], 'mine', '#f5c451', 'ally', '#6fb5ff', 'enemy', '#e0533f', 'cargo', '#e8eef2', '#c7cfd6'],
+              'circle-stroke-color': '#0a1820', 'circle-stroke-width': 1.2,
+            },
+          },
+          {
+            id: P + 'ship-labels', type: 'symbol', source: P + 'fleets', minzoom: 2.2,
+            layout: {
+              'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 2.2, 9.5, 5, 11.5],
+              'text-anchor': 'top',
+              'text-offset': ['interpolate', ['linear'], ['zoom'], 3, ['literal', [0, 0.6]], SHIP3D_MIN_ZOOM, ['literal', [0, 1.6]], 8, ['literal', [0, 3.2]]],
+              'text-allow-overlap': true, 'symbol-sort-key': ['match', ['get', 'rel'], 'mine', 0, 'enemy', 1, 'ally', 2, 3],
+            },
+            paint: {
+              'text-color': ['match', ['get', 'rel'], 'mine', '#ffe39a', 'ally', '#cfe6ff', 'enemy', '#ffb3a8', '#e8eef2'],
               'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4,
-              'text-opacity': ['interpolate', ['linear'], ['zoom'], 3.3, 0, 3.8, 1],
             },
           },
           {
@@ -464,7 +545,7 @@ function worldStyle(P: string, attached: boolean) {
             layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-allow-overlap': true },
             paint: {
               'text-color': ['match', ['get', 'kind'], 'mine', '#ffe39a', 'ship', '#e8f4ff', '#ffb3a8'], 'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4,
-              'text-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
+              'text-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['to-boolean', ['get', 'fleet']], 0, 1]],
             },
           },
           {
@@ -529,12 +610,6 @@ function addMapImages(m: MLMap) {
     return { width: 24, height: 24, data: new Uint8Array(g.getImageData(0, 0, 24, 24).data.buffer) };
   };
   const opts = { stretchX: [[9, 15]] as [number, number][], stretchY: [[9, 15]] as [number, number][], content: [6, 6, 18, 18] as [number, number, number, number] };
-  if (!m.hasImage('cc-warship-mine')) {
-    for (const [rel, color] of Object.entries(FLEET_COLORS)) {
-      m.addImage(`cc-warship-${rel}`, drawWarship(color, true), { pixelRatio: 2 });
-      m.addImage(`cc-warship-${rel}-still`, drawWarship(color, false), { pixelRatio: 2 });
-    }
-  }
   if (m.hasImage('cc-ship')) return;
   m.addImage('cc-badge-mine', badge('#f5c451', '#7a5a12'), opts);
   m.addImage('cc-badge-ally', badge('#2f78b7', '#cfe6ff'), opts);

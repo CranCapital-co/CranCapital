@@ -8,7 +8,7 @@ import { sound } from '../audio/sound';
 import { Icon } from '../ui/Icon';
 import { Confirm, useApi, Loading } from '../ui/components';
 import { refreshMe } from '../ui/common';
-import { flag, untilLong, refreshFleets, type WorldMapData, type WorldState, type UnitType, type Upgrades, type UpgradeTrack } from './api';
+import { flag, untilLong, refreshFleets, refreshWaterways, refreshWorldShips, useWaterways, type WorldMapData, type WorldState, type UnitType, type Upgrades, type UpgradeTrack, type Waterway } from './api';
 import type { TroopMap } from './WorldMap';
 
 export interface MyNation {
@@ -622,6 +622,78 @@ function SurrenderButton({ onYes }: { onYes: () => void }) {
 // ---------------------------------------------------------------------------
 // The world
 // ---------------------------------------------------------------------------
+// The vital waterways: who holds each one, who may pass, and (for the
+// holder) the controls.
+const POLICY: Record<Waterway['policy'], [string, string]> = {
+  open: ['Open', 'green'],
+  toll: ['Toll', 'gold'],
+  allies: ['Allies only', ''],
+  closed: ['Closed', 'red'],
+};
+function WaterwaysCard({ select }: { select: (id: string) => void }) {
+  const list = useWaterways(true);
+  if (!list) return null;
+  return (
+    <section className="card stack">
+      <strong className="row"><Icon name="ship" size={18} accent="var(--gold)" /> Vital waterways</strong>
+      <p className="tiny muted" style={{ margin: 0 }}>
+        Whoever holds the country a canal or strait is in decides who may sail through: everyone, everyone for a toll (allies free), allies only, or nobody. Countries at war with the holder can never pass. Ships it shuts out go the long way round, or can&rsquo;t get there at all.
+      </p>
+      {list.map((w) => <WaterwayRow key={w.id} w={w} select={select} />)}
+    </section>
+  );
+}
+
+function WaterwayRow({ w, select }: { w: Waterway; select: (id: string) => void }) {
+  const [policy, setPolicy] = useState(w.policy);
+  const [toll, setToll] = useState(String(Math.round((w.toll || 10000000) / 1000)));
+  useEffect(() => {
+    setPolicy(w.policy);
+    setToll(String(Math.round((w.toll || 10000000) / 1000)));
+  }, [w.policy, w.toll]);
+  const [label, tone] = POLICY[w.policy];
+  const save = async () => {
+    const r = await act(() => rpc('waterway_set', { p_id: w.id, p_policy: policy, p_toll: Math.max(1, Number(toll) || 0) * 1000 }), `${w.name}: ${POLICY[policy][0].toLowerCase()}.`);
+    if (r) {
+      sound.play('success');
+      refreshWaterways();
+      refreshWorldShips();
+    }
+  };
+  return (
+    <div className="waterway-row stack" style={{ gap: 6 }}>
+      <div className="row between">
+        <button className="link-plain row" onClick={() => select(w.territory)} style={{ gap: 6 }}>
+          <b>{w.name}</b>
+        </button>
+        <span className={`chip tiny ${tone}`}>{label}{w.policy === 'toll' ? ` ${money(w.toll, { compact: true, cents: false })}` : ''}</span>
+      </div>
+      <div className="row between tiny">
+        <span className="muted">Held by {w.mine ? 'you' : w.holder_name}</span>
+        <span className={w.access === 'closed' ? 'neg' : w.access === 'toll' ? '' : 'pos'}>
+          {w.mine ? 'Yours to control' : w.access === 'open' ? 'Your ships may pass' : w.access === 'toll' ? 'Your ships pay the toll' : 'Closed to your ships'}
+        </span>
+      </div>
+      {w.mine && (
+        <div className="stack" style={{ gap: 6 }}>
+          <div className="seg">
+            {(Object.keys(POLICY) as Waterway['policy'][]).map((k) => (
+              <button key={k} className={policy === k ? 'on' : ''} onClick={() => setPolicy(k)}>{POLICY[k][0]}</button>
+            ))}
+          </div>
+          {policy === 'toll' && (
+            <label className="field">
+              <span>Toll per ship ($1 to $100,000)</span>
+              <input className="input" inputMode="numeric" value={toll} onChange={(e) => setToll(e.target.value.replace(/[^0-9]/g, ''))} />
+            </label>
+          )}
+          <button className="btn small gold" disabled={policy === w.policy && (policy !== 'toll' || Number(toll) * 1000 === w.toll)} onClick={save}>Save</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorldTab({ my, world, name, select }: Ctx) {
   const { data: ranks } = useApi(() => rpc<any>('world_rankings'), [], 60000);
   const { data: news } = useApi(() => rpc<any[]>('world_news', { p_limit: 40 }), [], 20000);
@@ -629,6 +701,7 @@ export function WorldTab({ my, world, name, select }: Ctx) {
   const myRank = ranks?.powers?.findIndex((p: any) => p.id === my.nation?.id);
   return (
     <div className="stack">
+      <WaterwaysCard select={select} />
       <section className="card stack">
         <strong className="row"><Icon name="crown" size={18} accent="var(--gold)" /> Balance of power</strong>
         {top && (

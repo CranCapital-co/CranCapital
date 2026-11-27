@@ -7,6 +7,10 @@ import { KEYS, API_URL, DB_URL } from '../../tools/local-supabase/config.mjs';
 
 export const db = new pg.Pool({ connectionString: DB_URL, max: 4 });
 
+// Tests start new players from scratch (no head start), except the test
+// of the head start itself, which turns it back on.
+await db.query(`update game.config set value = 0 where key = 'head_start'`).catch(() => {});
+
 export async function q(sql, params = []) {
   const r = await db.query(sql, params);
   return r.rows;

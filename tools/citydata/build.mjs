@@ -30,6 +30,13 @@ import {
   Raster,
   packBits,
 } from './geo.mjs';
+import { splitBlock } from './lots.mjs';
+
+// Blocks the tiles merged into one feature are cut into building lots
+// (see lots.mjs) when they are at least this big.
+const SPLIT_MIN = 1500;
+// Lot ids: clear of OpenStreetMap-derived ids, below 2^53.
+const lotId = (parent, k) => 1e14 + parent * 1000 + k + 1;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -130,7 +137,10 @@ async function tileUrlTemplate() {
 }
 
 async function getTile(template, x, y) {
-  const file = cachePath(Z, x, y);
+  let file = cachePath(Z, x, y);
+  // tiles.mjs keeps its own cache of the same tiles.
+  const shared = path.join(CACHE, 'tiles', `${Z}-${x}-${y}.pbf`);
+  if (!fs.existsSync(file) && fs.existsSync(shared)) file = shared;
   if (!fs.existsSync(file)) {
     const url = template.replace('{z}', Z).replace('{x}', x).replace('{y}', y);
     for (let attempt = 1; ; attempt++) {
@@ -475,6 +485,8 @@ async function buildCity(city, template) {
 
   // Final building records.
   const records = [];
+  const lotShapes = []; // for tiles.mjs: lots replace their block in the street tiles
+  const hasParts = new Set(aliases.map(([, o]) => o));
   for (const b of gameBuildings) {
     const height = Math.max(3, Math.round(b.height * 10) / 10);
     const levels = Math.max(1, Math.min(80, Math.round(height / 3.5)));
@@ -510,6 +522,10 @@ async function buildCity(city, template) {
     }
     const landmark = !merged && (['station', 'landmark', 'worship'].includes(kind) || (!!name && footprint > 4000));
     const [lng, lat] = frame.toLngLat(b.cx, b.cy);
+    // A merged block (or any big plain building): cut into lots, each its
+    // own building. The block stays as a hidden record so anything that
+    // referred to it can be moved to its lots.
+    const lots = footprint >= SPLIT_MIN && !landmark && !b.hide3d && !hasParts.has(b.id) ? splitBlock(b.rings) : [];
     records.push({
       id: b.id,
       lng: Math.round(lng * 1e6) / 1e6,
@@ -522,8 +538,35 @@ async function buildCity(city, template) {
       name: name ? name.slice(0, 80) : null,
       landmark,
       traffic: trafficAt(b.cx, b.cy),
+      split: lots.length >= 2,
+      parent: null,
+    });
+    if (lots.length < 2) continue;
+    lots.slice(0, 999).forEach((l, k) => {
+      const id = lotId(b.id, k);
+      const fp = Math.round(l.area);
+      const [llng, llat] = frame.toLngLat(l.cx, l.cy);
+      records.push({
+        id,
+        lng: Math.round(llng * 1e6) / 1e6,
+        lat: Math.round(llat * 1e6) / 1e6,
+        footprint: fp,
+        height,
+        levels,
+        rooms: Math.max(1, Math.min(80, Math.round((fp * levels) / 250))),
+        kind: merged ? kind : kind === 'landmark' ? 'mixed' : kind,
+        name: null,
+        landmark: false,
+        traffic: trafficAt(l.cx, l.cy),
+        split: false,
+        parent: b.id,
+      });
+      lotShapes.push({ id, parent: b.id, rings: l.rings.map((r) => r.map(([x, y]) => frame.toLngLat(x, y).map((v) => Math.round(v * 1e7) / 1e7))) });
     });
   }
+  const lotDir = path.join(CACHE, 'lots');
+  fs.mkdirSync(lotDir, { recursive: true });
+  fs.writeFileSync(path.join(lotDir, `${city.id}.json`), JSON.stringify({ parents: [...new Set(lotShapes.map((l) => l.parent))], lots: lotShapes }));
 
   // Write client files.
   const outDir = path.join(ROOT, 'client/public/cities', city.id);
@@ -605,11 +648,11 @@ async function buildCity(city, template) {
       .slice(i, i + BATCH)
       .map(
         (r) =>
-          `(${r.id},${q(city.id)},${r.lat},${r.lng},${r.footprint},${r.height},${r.levels},${r.rooms},${q(r.kind)},${q(r.name)},${r.landmark},${r.traffic.toFixed(3)})`
+          `(${r.id},${q(city.id)},${r.lat},${r.lng},${r.footprint},${r.height},${r.levels},${r.rooms},${q(r.kind)},${q(r.name)},${r.landmark},${r.traffic.toFixed(3)},${r.parent ?? 'null'},${r.split})`
       )
       .join(',\n');
     lines.push(
-      `insert into game.buildings (id, city_id, lat, lng, footprint_m2, height_m, levels, rooms_total, kind, name, landmark, traffic) values\n${vals}\non conflict (id) do update set city_id = excluded.city_id, lat = excluded.lat, lng = excluded.lng, footprint_m2 = excluded.footprint_m2, height_m = excluded.height_m, levels = excluded.levels, rooms_total = excluded.rooms_total, kind = excluded.kind, name = excluded.name, landmark = excluded.landmark, traffic = excluded.traffic;`
+      `insert into game.buildings (id, city_id, lat, lng, footprint_m2, height_m, levels, rooms_total, kind, name, landmark, traffic, parent_id, split) values\n${vals}\non conflict (id) do update set city_id = excluded.city_id, lat = excluded.lat, lng = excluded.lng, footprint_m2 = excluded.footprint_m2, height_m = excluded.height_m, levels = excluded.levels, rooms_total = excluded.rooms_total, kind = excluded.kind, name = excluded.name, landmark = excluded.landmark, traffic = excluded.traffic, parent_id = excluded.parent_id, split = excluded.split;`
     );
   }
   const keep = new Set(records.map((r) => r.id));
@@ -623,13 +666,15 @@ async function buildCity(city, template) {
       `insert into game.building_aliases (alias_id, building_id) values ${vals} on conflict (alias_id) do update set building_id = excluded.building_id;`
     );
   }
+  // Businesses, rooms and owners of a block that is now lots move to them.
+  lines.push(`select game.remap_split_buildings(${q(city.id)});`);
   fs.writeFileSync(path.join(sqlDir, `${city.id}.sql`), lines.join('\n') + '\n');
 
   const kinds = {};
   for (const r of records) kinds[r.kind] = (kinds[r.kind] || 0) + 1;
   const tv = [...scoreAt].filter((v) => v > 0).sort((a, b) => a - b);
   console.log(
-    `${city.id}: ${tiles.length} tiles, ${records.length} buildings (${goodAliases.length} part aliases), ${plotCount} plots (${coastCount} coastal), ${pois.length} POIs, walk ${walk.w}x${walk.h}, traffic p10 ${tv[Math.floor(tv.length * 0.1)]?.toFixed(2)} p50 ${tv[Math.floor(tv.length * 0.5)]?.toFixed(2)} p90 ${tv[Math.floor(tv.length * 0.9)]?.toFixed(2)} max ${tv[tv.length - 1]?.toFixed(2)}; ${JSON.stringify(kinds)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`
+    `${city.id}: ${tiles.length} tiles, ${records.length} buildings (${records.filter((r) => r.split).length} blocks cut into ${records.filter((r) => r.parent).length} lots, ${goodAliases.length} part aliases), ${plotCount} plots (${coastCount} coastal), ${pois.length} POIs, walk ${walk.w}x${walk.h}, traffic p10 ${tv[Math.floor(tv.length * 0.1)]?.toFixed(2)} p50 ${tv[Math.floor(tv.length * 0.5)]?.toFixed(2)} p90 ${tv[Math.floor(tv.length * 0.9)]?.toFixed(2)} max ${tv[tv.length - 1]?.toFixed(2)}; ${JSON.stringify(kinds)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`
   );
 }
 

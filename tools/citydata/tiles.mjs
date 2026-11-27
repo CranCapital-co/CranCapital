@@ -95,7 +95,111 @@ function readLayer(buf) {
   return L;
 }
 
-function slimTile(buf, outer = false) {
+// Building lots (from build.mjs, see lots.mjs): in z14 tiles the merged
+// block features are replaced by their lots, which keep the block's
+// properties (height, colour) and get their own ids.
+const LOTS = { parents: new Set(), byParent: new Map() };
+function loadLots() {
+  const dir = path.join(HERE, '.cache', 'lots');
+  if (!fs.existsSync(dir)) return;
+  for (const f of fs.readdirSync(dir)) {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const p of j.parents) LOTS.parents.add(p);
+    for (const l of j.lots) (LOTS.byParent.get(l.parent) ?? LOTS.byParent.set(l.parent, []).get(l.parent)).push(l);
+  }
+}
+
+const ringArea = (r) => {
+  let a = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += r[j][0] * r[i][1] - r[i][0] * r[j][1];
+  return a / 2;
+};
+const inRing = (x, y, r) => {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, yi] = r[i];
+    const [xj, yj] = r[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+// Sutherland–Hodgman against the tile square plus a buffer.
+function clipToTile(ring, lo, hi) {
+  let pts = ring;
+  const sides = [
+    [(p) => p[0] >= lo, (a, b) => [lo, a[1] + ((b[1] - a[1]) * (lo - a[0])) / (b[0] - a[0])]],
+    [(p) => p[0] <= hi, (a, b) => [hi, a[1] + ((b[1] - a[1]) * (hi - a[0])) / (b[0] - a[0])]],
+    [(p) => p[1] >= lo, (a, b) => [a[0] + ((b[0] - a[0]) * (lo - a[1])) / (b[1] - a[1]), lo]],
+    [(p) => p[1] <= hi, (a, b) => [a[0] + ((b[0] - a[0]) * (hi - a[1])) / (b[1] - a[1]), hi]],
+  ];
+  for (const [ins, cut] of sides) {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length];
+      const b = pts[i];
+      if (ins(b)) {
+        if (!ins(a)) out.push(cut(a, b));
+        out.push(b);
+      } else if (ins(a)) out.push(cut(a, b));
+    }
+    pts = out;
+    if (pts.length < 3) return [];
+  }
+  return pts;
+}
+// A lot's outline as MVT polygon geometry for tile z/x/y, or null if it
+// doesn't reach this tile.
+function lotGeometry(lot, z, x, y, extent) {
+  const B = 64;
+  const n = 2 ** z;
+  const toTile = ([lng, lat]) => {
+    const [tx, ty] = lngLatToTile(lng, lat, z);
+    return [(tx - x) * extent, (ty - y) * extent];
+  };
+  // Outer rings first, each followed by its holes. In lng/lat (y up) outer
+  // rings are anticlockwise; MVT wants exteriors with positive area in tile
+  // coordinates (y down).
+  const outers = [];
+  const holes = [];
+  for (const r of lot.rings) (ringArea(r) > 0 ? outers : holes).push(r);
+  const ordered = [];
+  for (const o of outers) {
+    ordered.push([o, true]);
+    for (const h of holes) if (inRing(h[0][0], h[0][1], o)) ordered.push([h, false]);
+  }
+  const cmds = [];
+  let cx = 0;
+  let cy = 0;
+  const zz = (v) => (v << 1) ^ (v >> 31);
+  let any = false;
+  for (const [r, outer] of ordered) {
+    let t = clipToTile(r.map(toTile), -B, extent + B).map(([a, b]) => [Math.round(a), Math.round(b)]);
+    t = t.filter((p, i) => i === 0 || p[0] !== t[i - 1][0] || p[1] !== t[i - 1][1]);
+    if (t.length > 1 && t[0][0] === t[t.length - 1][0] && t[0][1] === t[t.length - 1][1]) t.pop();
+    if (t.length < 3) continue;
+    const a = ringArea(t);
+    if (a === 0) continue;
+    if ((a > 0) !== outer) t.reverse();
+    if (!outer && !any) continue; // a hole whose outline isn't in this tile
+    cmds.push(1 | (1 << 3), zz(t[0][0] - cx), zz(t[0][1] - cy));
+    cx = t[0][0];
+    cy = t[0][1];
+    cmds.push(2 | ((t.length - 1) << 3));
+    for (let i = 1; i < t.length; i++) {
+      cmds.push(zz(t[i][0] - cx), zz(t[i][1] - cy));
+      cx = t[i][0];
+      cy = t[i][1];
+    }
+    cmds.push(7 | (1 << 3));
+    if (outer) any = true;
+  }
+  if (!any) return null;
+  const pb = new Pbf();
+  for (const v of cmds) pb.writeVarint(v);
+  return pb.finish();
+}
+
+function slimTile(buf, outer = false, zxy = null) {
   const layers = outer ? OUTER_LAYERS : LAYERS;
   const keep = outer ? keepOuter : keepFeature;
   const p = new Pbf(buf);
@@ -129,6 +233,35 @@ function slimTile(buf, outer = false) {
         const vk = Buffer.from(raw).toString('base64');
         if (!valIx.has(vk)) { valIx.set(vk, values.length); values.push(raw); }
         tags.push(keyIx.get(k), valIx.get(vk));
+      }
+      // A merged block in a street-level tile: its lots instead.
+      if (L.name === 'building' && zxy && zxy[0] === 14 && f.id !== null && LOTS.parents.has(f.id)) {
+        if (!f._done) {
+          // Each lot a little taller or lower than its neighbours, so the
+          // block reads as separate buildings.
+          const hk = keys.indexOf('render_height');
+          const baseH = Number(props.render_height) || 0;
+          for (const lot of LOTS.byParent.get(f.id) ?? []) {
+            const geom = lotGeometry(lot, zxy[0], zxy[1], zxy[2], L.extent);
+            if (!geom) continue;
+            let lt = tags;
+            if (hk >= 0 && baseH > 0) {
+              const r = (((lot.id % 9973) * 7919) % 1000) / 1000;
+              const h = Math.max(3, Math.round(baseH * (0.82 + 0.36 * r)));
+              const pb = new Pbf();
+              pb.writeVarintField(5, h);
+              const raw = pb.finish();
+              const vk = Buffer.from(raw).toString('base64');
+              if (!valIx.has(vk)) { valIx.set(vk, values.length); values.push(raw); }
+              lt = tags.slice();
+              for (let i = 0; i < lt.length; i += 2) if (lt[i] === hk) lt[i + 1] = valIx.get(vk);
+            }
+            features.push({ id: lot.id, tags: lt, type: 3, geom });
+          }
+          // The same block can come in several pieces in one tile.
+          for (const g of L.features) if (g.id === f.id) g._done = true;
+        }
+        continue;
       }
       features.push({ ...f, tags });
     }
@@ -196,6 +329,8 @@ async function main() {
       for (let x = ix0; x <= ix1; x++) for (let y = iy0; y <= iy1; y++) inner.add(`${z}/${x}/${y}`);
     }
   }
+  loadLots();
+  console.log(`${LOTS.parents.size} merged blocks are replaced by their lots`);
   fs.rmSync(OUT, { recursive: true, force: true });
   let raw = 0;
   let slim = 0;
@@ -205,7 +340,7 @@ async function main() {
     let buf = await download(tpl, z, x, y);
     if (buf[0] === 0x1f && buf[1] === 0x8b) buf = zlib.gunzipSync(buf);
     raw += buf.length;
-    const s = slimTile(buf, !inner.has(k));
+    const s = slimTile(buf, !inner.has(k), [z, x, y]);
     slim += s.length;
     const g = zlib.gzipSync(s, { level: 9 });
     gz += g.length;

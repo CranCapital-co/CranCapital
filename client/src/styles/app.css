@@ -368,3 +368,33 @@ details summary { cursor: pointer; color: var(--ink-2); }
 .photo-filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .photo-filters .chip { cursor: pointer; border: 1px solid var(--line); background: var(--panel-solid); color: var(--ink); }
 .photo-filters .chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+/* Head start card */
+.head-start .hs-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border-radius: 12px; background: var(--bg-2); }
+.head-start .hs-row > div { display: flex; flex-direction: column; gap: 2px; }
+
+/* The zoomed-out world: round, feathered edges, and "you are here". */
+.world-edge {
+  position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; border-radius: 50%;
+  --edge: #ffffff;
+  box-shadow: 0 0 0 300vmax var(--edge), inset 0 0 var(--feather, 40px) calc(var(--feather, 40px) * 0.55) var(--edge);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .world-edge { --edge: var(--bg); } }
+:root[data-theme='dark'] .world-edge { --edge: var(--bg); }
+.here-marker {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; padding: 0;
+  cursor: pointer; font: inherit; z-index: 3;
+}
+.here-marker .here-label {
+  order: -1; padding: 4px 10px; border-radius: 999px; background: var(--gold); color: #2b1d02; font-weight: 700;
+  font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.here-marker .here-dot {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--gold); border: 3px solid #fff;
+  box-shadow: 0 0 0 0 rgba(245, 196, 81, 0.7); animation: here-pulse 1.8s ease-out infinite;
+}
+@keyframes here-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 196, 81, 0.7); }
+  100% { box-shadow: 0 0 0 16px rgba(245, 196, 81, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .here-marker .here-dot { animation: none; } }

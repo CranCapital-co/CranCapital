@@ -4,6 +4,10 @@ CranCapital is a shared business game played on a real map. You start small with
 
 Everyone plays in the same world. The streets and buildings are real places in London, New York, Tokyo, Singapore, Paris, Berlin, Toronto, Sydney, Shanghai, Moscow, Rio de Janeiro, Mexico City, Mumbai and Lagos. You start in the city of the country you lead, or the nearest one if your country has no city yet.
 
+## Your head start
+
+The world keeps going, so new players don't start from nothing. When you join you get a head start sized from how far the players active this week have got: cash (a fifth of their typical net worth, between $50,000 and $2,000,000), Renown levels (with the perk points and unlocks they bring) and gold crates. The game shows you what you got and what each part does when you first arrive. The head start grows as the world does.
+
 ## Your first ten minutes
 
 1. Pick a city. Your first arrival is free.

@@ -18,6 +18,8 @@ test('choose a country, earn Renown and run your nation', { timeout: 180_000 }, 
   try {
     const ctx = await browser.newContext({ ...devices['iPad Pro 11 landscape'] });
     const page = await ctx.newPage();
+    // A new player's head start card, if it's on: close it whenever it shows.
+    await page.addLocatorHandler(page.locator('.head-start').getByRole('button', { name: /Let.s go/ }), async (b) => { await b.click(); });
     const errors = [];
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => {

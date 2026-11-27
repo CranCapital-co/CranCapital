@@ -9,8 +9,9 @@ const levelUp = async (id, level) =>
   q('select game.grant_xp($1, greatest(1, (select total from game.level_xp where level = $2)::int - coalesce((select xp from game.renown where player_id = $1), 0)::int), $3)', [id, level, 'test']);
 
 // A coastal country (a) with a land neighbour (n), a coastal country 1,200 to
-// 2,000 km away that isn't a neighbour (e), and a coastal one 3,300 to 4,300 km
-// from n (f). Nobody leads any of them and none is at war.
+// 2,000 km away that isn't a neighbour and is within 3,500 km by sea (e), and
+// a coastal one 3,300 to 4,300 km from n and over 4,500 km from a by sea (f).
+// Nobody leads any of them and none is at war.
 async function layout() {
   await q(`update game.nations set protected_until = null where leader_id is null`);
   return one(`
@@ -23,10 +24,14 @@ async function layout() {
       join game.territories tn on tn.id = nb.b
       join lateral (select e.* from free e where not e.landlocked and e.id not in (a.id, nb.b)
                        and not exists (select 1 from game.territory_links z where z.a = a.id and z.b = e.id)
-                       and game.dist_m(a.lat, a.lng, e.lat, e.lng) between 1200000 and 2000000 order by e.id limit 1) e on true
+                       and game.dist_m(a.lat, a.lng, e.lat, e.lng) between 1200000 and 2000000
+                       and exists (select 1 from game.sea_routes r where r.a = least(a.id, e.id) and r.b = greatest(a.id, e.id) and r.km < 3500 and r.via = '{}')
+                     order by e.id limit 1) e on true
       join lateral (select f.* from free f where not f.landlocked and f.id not in (a.id, nb.b, e.id)
                        and game.dist_m(tn.lat, tn.lng, f.lat, f.lng) between 3300000 and 4300000
-                       and game.dist_m(a.lat, a.lng, f.lat, f.lng) > 2600000 order by f.id limit 1) f on true
+                       and game.dist_m(a.lat, a.lng, f.lat, f.lng) > 2600000
+                       and exists (select 1 from game.sea_routes r where r.a = least(a.id, f.id) and r.b = greatest(a.id, f.id) and r.km > 4500)
+                     order by f.id limit 1) f on true
      where not a.landlocked order by a.id limit 1`);
 }
 
@@ -127,15 +132,15 @@ test('troopships: fleets carry troops overseas, by capacity and range, and land 
   assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.e, p_units: { naval: 2, infantry: 20 } }), /troopships/);
   assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.e, p_units: { infantry: 20 } }), /doesn't border/);
 
-  // Level 1: cheap; 20 soldiers a fleet, 3,000 km.
+  // Level 1: cheap; 20 soldiers a fleet, 4,000 km by sea.
   const c0 = Number((await one('select cash from game.players where id = $1', [p.id])).cash);
   const up = await rpc(p.client, 'military_upgrade', { p_track: 'troopships' });
   assert.equal(Number((await one('select cash from game.players where id = $1', [p.id])).cash), c0 - 15000000);
   assert.equal(up.troop_capacity, 20);
-  assert.equal(up.troop_range_km, 3000);
+  assert.equal(up.troop_range_km, 4000);
   assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.e, p_units: { naval: 2, infantry: 41 } }), /2 fleets carry 40 soldiers/);
   assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.e, p_units: { naval: 2, infantry: 30, artillery: 6 } }), /carry 40 soldiers and you're sending 42/);
-  assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.f, p_units: { naval: 2, infantry: 10 } }), /troopships reach 3,000 km/);
+  assert.match(await rpcError(p.client, 'army_send', { p_from: L.a, p_to: L.f, p_units: { naval: 2, infantry: 10 } }), /troopships reach 4,000 km/);
 
   // Level 2: 30 a fleet; 3 fleets carry 90 to the enemy's shore.
   await rpc(p.client, 'military_upgrade', { p_track: 'troopships' });
@@ -144,9 +149,9 @@ test('troopships: fleets carry troops overseas, by capacity and range, and land 
   const m = await rpc(p.client, 'army_send', { p_from: L.a, p_to: L.e, p_units: { naval: 3, infantry: 90 } });
   assert.equal(m.kind, 'attack');
   const mm = await one('select * from game.movements where id = $1', [m.id]);
-  const km = Number((await one('select game.dist_m(a.lat, a.lng, b.lat, b.lng) / 1000 d from game.territories a, game.territories b where a.id = $1 and b.id = $2', [L.a, L.e])).d);
+  const km = Number((await one('select km from game.sea_routes where a = least($1, $2) and b = greatest($1, $2)', [L.a, L.e])).km);
   const mins = (new Date(mm.arrive_at) - new Date(mm.depart_at)) / 60000;
-  assert.ok(mins > km * 1.2 / 100, 'sails at fleet speed over the longer sea lane');
+  assert.ok(Math.abs(mins - (2 + km / 90)) < 1.5, `sails the sea route (${km} km) at fleet speed: ${mins} min`);
 
   // You (and only you, your allies and its target) can see it at sea.
   const fm = await rpc(p.client, 'fleet_map');

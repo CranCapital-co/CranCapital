@@ -14,6 +14,8 @@ import { Moments } from '../ui/Moments';
 import { RenownMoments, RenownBadge } from '../ui/RenownMoments';
 import { PhotoMode } from '../ui/PhotoMode';
 import { reducedMotion } from '../lib/settings';
+import { HeadStart } from '../ui/HeadStart';
+import { WorldDecor } from '../nations/WorldDecor';
 import WorldOverlay from '../nations/WorldOverlay';
 import { useWorldView, WORLD_ZOOM } from '../nations/worldView';
 import { trafficLabel } from '../ui/common';
@@ -238,6 +240,18 @@ export default function World() {
       )}
 
       <WorldOverlay />
+      {city && (
+        <WorldDecor
+          home={[useGame.getState().pos?.lng ?? city.meta.start.lng, useGame.getState().pos?.lat ?? city.meta.start.lat]}
+          name={city.meta.name}
+          onHome={() => {
+            // Close the Nation screen (which flies back), or fly home.
+            if (nations) setNations(false);
+            else api.current?.flyTo(useGame.getState().pos?.lat ?? city.meta.start.lat, useGame.getState().pos?.lng ?? city.meta.start.lng, 16.6);
+          }}
+        />
+      )}
+      <HeadStart />
       <div className="hud">
         <HudMoney />
         <RenownBadge />
