@@ -53,7 +53,13 @@ export function loadWorldMap(): Promise<WorldMapData> {
 }
 
 // Country shapes (Natural Earth 1:110m, public domain), keyed by territory id.
+// The topology is kept too: it knows which edges are coast (used by one
+// country only), which is where fleets anchor.
 let shapesP: Promise<GeoJSON.FeatureCollection> | null = null;
+let topology: any = null;
+let shapeList: GeoJSON.FeatureCollection | null = null;
+export const worldTopology = () => topology;
+export const worldShapes = () => shapeList;
 export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
   if (!shapesP) {
     shapesP = fetch(`${import.meta.env.BASE_URL}world/countries.json`)
@@ -61,7 +67,11 @@ export function loadShapes(): Promise<GeoJSON.FeatureCollection> {
         if (!r.ok) throw new Error('Couldn’t load the world map.');
         return r.json();
       })
-      .then((topo) => feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection)
+      .then((topo) => {
+        topology = topo;
+        shapeList = feature(topo, topo.objects.countries) as unknown as GeoJSON.FeatureCollection;
+        return shapeList;
+      })
       .catch((e) => { shapesP = null; throw e; });
   }
   return shapesP;
@@ -109,28 +119,63 @@ export function onWorldNews(ev: 'news' | 'move' | 'battle', fn: (d: any) => void
   return () => worldBus.removeEventListener(ev, h);
 }
 
-export function useWorldState(every = 15000) {
-  const [state, setState] = useState<WorldState | null>(null);
-  const timer = useRef<any>(0);
+// One shared copy of the live world for everything that shows it (the
+// Nation screen, the world on the city map): one poll, not one per screen.
+let shared: WorldState | null = null;
+const subs = new Map<number, { every: number; set: (s: WorldState) => void }>();
+let subId = 0;
+let pollTimer: any = 0;
+let soonTimer: any = 0;
+let newsOffs: (() => void)[] = [];
+let inflight: Promise<void> | null = null;
+function loadShared() {
+  if (inflight) return inflight;
+  inflight = rpc<WorldState>('world_state')
+    .then((s) => {
+      shared = s;
+      subs.forEach((x) => x.set(s));
+    })
+    .catch(() => {})
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+function repoll() {
+  clearInterval(pollTimer);
+  if (!subs.size) return;
+  const every = Math.min(...[...subs.values()].map((x) => x.every));
+  pollTimer = setInterval(() => !document.hidden && loadShared(), every);
+}
+
+export function useWorldState(every = 15000, active = true) {
+  const [state, setState] = useState<WorldState | null>(shared);
   useEffect(() => {
-    let alive = true;
-    const load = () => rpc<WorldState>('world_state').then((s) => alive && setState(s)).catch(() => {});
-    load();
-    const i = setInterval(() => !document.hidden && load(), every);
-    joinWorldNews();
-    const soon = () => {
-      clearTimeout(timer.current);
-      timer.current = setTimeout(load, 1200);
-    };
-    const offs = [onWorldNews('news', soon), onWorldNews('move', soon), onWorldNews('battle', soon)];
+    if (!active) return;
+    const id = ++subId;
+    subs.set(id, { every, set: setState });
+    if (subs.size === 1) {
+      joinWorldNews();
+      const soon = () => {
+        clearTimeout(soonTimer);
+        soonTimer = setTimeout(loadShared, 1200);
+      };
+      newsOffs = [onWorldNews('news', soon), onWorldNews('move', soon), onWorldNews('battle', soon)];
+    }
+    if (shared) setState(shared);
+    loadShared();
+    repoll();
     return () => {
-      alive = false;
-      clearInterval(i);
-      clearTimeout(timer.current);
-      offs.forEach((f) => f());
-      leaveWorldNews();
+      subs.delete(id);
+      repoll();
+      if (!subs.size) {
+        clearTimeout(soonTimer);
+        newsOffs.forEach((f) => f());
+        newsOffs = [];
+        leaveWorldNews();
+      }
     };
-  }, [every]);
+  }, [every, active]);
   return state;
 }
 
@@ -181,4 +226,60 @@ export function oddsLabel(ratio: number) {
   if (ratio >= 0.95) return { label: 'A coin toss', tone: 'gold' };
   if (ratio >= 0.7) return { label: 'Risky', tone: 'red' };
   return { label: 'Hopeless', tone: 'red' };
+}
+
+// ---------------------------------------------------------------------------
+// Military upgrades and fleets
+// ---------------------------------------------------------------------------
+export interface UpgradeTrack {
+  id: 'missile_range' | 'missile_warhead' | 'missile_guidance' | 'troopships';
+  name: string; icon: string; body: string; tech: string | null; ready: boolean;
+  level: number; max: number; price: number | null; now: string; next: string | null;
+}
+export interface Upgrades { tracks: UpgradeTrack[]; missile_range_km: number; troop_capacity: number; troop_range_km: number }
+
+// Places aboard a troopship: infantry 1, artillery 2, armour 3, missiles 5.
+export function cargoOf(units: Record<string, number>) {
+  return (units.infantry ?? 0) + 2 * (units.artillery ?? 0) + 3 * (units.armor ?? 0) + 5 * (units.missile ?? 0);
+}
+
+export interface FleetMap {
+  docked: { t: string; n: string; rel: 'mine' | 'ally' | 'enemy'; qty: number }[];
+  sailing: { id: number; n: string; rel: 'mine' | 'ally' | 'enemy'; from: string; to: string; kind: string; depart_at: string; arrive_at: string; qty: number; troops: number | null }[];
+}
+
+// Fleets in port and at sea, shared by everything that draws them; polled
+// only while the world is on screen (not on every move in the world: that
+// would be every player asking at once), and refreshed after you send one.
+let fleets: FleetMap | null = null;
+const fleetSubs = new Set<(f: FleetMap) => void>();
+let fleetTimer: any = 0;
+let fleetBusy = false;
+export function refreshFleets() {
+  if (fleetBusy || !fleetSubs.size) return;
+  fleetBusy = true;
+  rpc<FleetMap>('fleet_map')
+    .then((f) => {
+      fleets = f;
+      fleetSubs.forEach((s) => s(f));
+    })
+    .catch(() => {})
+    .finally(() => { fleetBusy = false; });
+}
+export function useFleets(active: boolean) {
+  const [f, setF] = useState<FleetMap | null>(fleets);
+  useEffect(() => {
+    if (!active) return;
+    fleetSubs.add(setF);
+    if (fleetSubs.size === 1) {
+      fleetTimer = setInterval(() => !document.hidden && refreshFleets(), 30000);
+    }
+    if (fleets) setF(fleets);
+    refreshFleets();
+    return () => {
+      fleetSubs.delete(setF);
+      if (!fleetSubs.size) clearInterval(fleetTimer);
+    };
+  }, [active]);
+  return f;
 }

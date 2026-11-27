@@ -23,6 +23,7 @@ import { reportError } from '../lib/errors';
 import { reducedMotion, useSettings, lowPowerDevice } from '../lib/settings';
 import type { WorldLayer } from '../world3d/WorldLayer';
 import { sound } from '../audio/sound';
+import { useWorldView, WORLD_ZOOM } from '../nations/worldView';
 const BASE_MAP_TIMEOUT = 10_000; // ms before we stop waiting for street-map tiles
 
 // Why the street map isn't showing: 'slow' (no tiles yet) or 'blocked'
@@ -100,12 +101,11 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       pitch: lowPower ? 45 : 52,
       bearing: -12,
       maxPitch: lowPower ? 60 : 70,
-      minZoom: 12.5,
+      // Zoom out as far as the whole world: the city fades out and the
+      // countries fade in (the world layers attach to this map).
+      minZoom: 1.2,
       maxZoom: 19.5,
-      maxBounds: [
-        [m.bbox[0] - 0.03, m.bbox[1] - 0.02],
-        [m.bbox[2] + 0.03, m.bbox[3] + 0.02],
-      ],
+      renderWorldCopies: false,
       attributionControl: false,
       antialias: !lowPower && q !== 'saver',
       pixelRatio: Math.min(window.devicePixelRatio || 1, q === 'high' ? (lowPower ? 1.25 : 2) : q === 'medium' ? (lowPower ? 1 : 1.5) : 1),
@@ -118,6 +118,14 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     const touch = window.matchMedia?.('(pointer: coarse)').matches ?? false;
     const canHover = window.matchMedia?.('(hover: hover)').matches ?? !touch;
     mapRef.current = map;
+    // Tell the world layers (and the Nation screen) about this map, and
+    // whether we're zoomed out far enough to see countries.
+    const far = () => map.getZoom() < WORLD_ZOOM;
+    useWorldView.getState().set({ map, zoomedOut: far() });
+    map.on('zoom', () => {
+      const z = far();
+      if (z !== useWorldView.getState().zoomedOut) useWorldView.getState().set({ zoomedOut: z });
+    });
     map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-left');
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     installIconFactory(map);
@@ -150,6 +158,8 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     let refreshing = false;
     const refreshData = async () => {
       if (refreshing || destroyed) return;
+      // Zoomed out over the world: no city data to load.
+      if (map.getZoom() < 13) return;
       refreshing = true;
       try {
         const b = map.getBounds();
@@ -193,6 +203,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     };
 
     const refreshPlots = async () => {
+      if (destroyed) return;
       if (map.getZoom() < 15.5) {
         setGeo('plots', empty());
         return;
@@ -319,6 +330,8 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
     });
 
     map.on('click', async (e) => {
+      // Zoomed out: taps are for the countries (the world layers handle them).
+      if (map.getZoom() < 13) return;
       const st = useGame.getState();
       const mode = st.mode;
       const { lat, lng } = e.lngLat;
@@ -487,6 +500,10 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
         },
         paint: { 'text-color': '#2b2b2b', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
       });
+      // City markers belong to street level: they vanish as you zoom out.
+      for (const id of ['traffic', 'plots-fill', 'plots-line', 'deposits', 'businesses', 'me', 'business-names']) {
+        if (map.getLayer(id)) map.setLayerZoomRange(id, 12.5, 24);
+      }
       applyMode();
       refreshData();
       (window as any).__ccMap = map; // handy for debugging and browser tests
@@ -593,6 +610,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       });
     });
     map.on('moveend', () => {
+      if (map.getZoom() < 13) return; // remember where you were in the city, not the world view
       const c = map.getCenter();
       pos.lat = c.lat;
       pos.lng = c.lng;
@@ -842,6 +860,7 @@ export default function GameMap({ city, onReady, onPlace, onSurvey }: Props) {
       window.removeEventListener('cc:ship', onShip);
       window.removeEventListener('cc:levelup', onLevel);
       crowd.destroy();
+      if (useWorldView.getState().map === map) useWorldView.getState().set({ map: null, zoomedOut: false });
       map.remove();
       mapRef.current = null;
     };

@@ -14,6 +14,8 @@ import { Moments } from '../ui/Moments';
 import { RenownMoments, RenownBadge } from '../ui/RenownMoments';
 import { PhotoMode } from '../ui/PhotoMode';
 import { reducedMotion } from '../lib/settings';
+import WorldOverlay from '../nations/WorldOverlay';
+import { useWorldView, WORLD_ZOOM } from '../nations/worldView';
 import { trafficLabel } from '../ui/common';
 import type { Me } from '../lib/types';
 
@@ -83,14 +85,41 @@ export default function World() {
   const [tour, setTour] = useState<{ name: string; business: string; i: number; n: number } | null>(null);
   // Your nation and the world map, over the city.
   const [nations, setNations] = useState(false);
+  const [nationSel, setNationSel] = useState<string | null>(null);
+  // Where the camera was in the city, to fly back to.
+  const cityCam = useRef<{ center: [number, number]; zoom: number; pitch: number; bearing: number } | null>(null);
   useEffect(() => {
-    const on = () => {
+    const on = (e: Event) => {
       useGame.getState().close();
+      setNationSel(((e as CustomEvent).detail as any)?.select ?? null);
       setNations(true);
     };
     window.addEventListener('cc:nations', on);
     return () => window.removeEventListener('cc:nations', on);
   }, []);
+  // The Nation screen uses the same map: fly out to the world, and back in.
+  useEffect(() => {
+    const map = useWorldView.getState().map;
+    if (!map) return;
+    if (nations) {
+      if (map.getZoom() >= WORLD_ZOOM) {
+        const c = map.getCenter();
+        cityCam.current = { center: [c.lng, c.lat], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+        // After the Nation panel has set its padding (which jumps the camera).
+        setTimeout(() => map.flyTo({ zoom: 2.2, pitch: 0, bearing: 0, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1600, essential: true }), 120);
+      }
+    } else {
+      // Back to the city: where you were, or your last spot in it.
+      const pos = useGame.getState().pos;
+      const cam = cityCam.current ?? (map.getZoom() < WORLD_ZOOM && pos ? { center: [pos.lng, pos.lat] as [number, number], zoom: 16.6, pitch: 48, bearing: -12 } : null);
+      cityCam.current = null;
+      // After the panel's padding is cleared (which jumps the camera).
+      setTimeout(() => {
+        map.setPadding({ top: 0, right: 0, bottom: 0, left: 0 });
+        if (cam) map.flyTo({ ...cam, duration: reducedMotion(useGame.getState().me?.prefs) ? 0 : 1600, essential: true });
+      }, 60);
+    }
+  }, [nations]);
   useEffect(() => {
     const onPhoto = () => setPhoto(true);
     const onTour = (e: Event) => setTour((e as CustomEvent).detail);
@@ -195,10 +224,10 @@ export default function World() {
   const Win = win ? WINDOWS[win.id] : null;
 
   return (
-    <div className={`game ${photo ? 'photo' : ''}`}>
-      {/* One map at a time: the city map closes while the world map is open
-          (an iPad can't hold both in memory). */}
-      {city && !nations && (
+    <div className={`game ${photo ? 'photo' : ''} ${nations ? 'nations-open' : ''}`}>
+      {/* One map for everything: the city, and the world when you zoom out
+          or open your nation. */}
+      {city && (
         <GameMap
           key={city.meta.id}
           city={city}
@@ -208,6 +237,7 @@ export default function World() {
         />
       )}
 
+      <WorldOverlay />
       <div className="hud">
         <HudMoney />
         <RenownBadge />
@@ -288,7 +318,7 @@ export default function World() {
       <RenownMoments />
       {nations && (
         <Suspense fallback={<div className="boot"><div className="spinner" /></div>}>
-          <NationsScreen onClose={() => setNations(false)} />
+          <NationsScreen initialSel={nationSel} onClose={() => setNations(false)} />
         </Suspense>
       )}
       {photo && <PhotoMode api={api} onClose={() => setPhoto(false)} />}

@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LOCAL_GLYPHS } from '../map/style';
-import type { WorldMapData, WorldState } from './api';
+import type { FleetMap, WorldMapData, WorldState } from './api';
+import { WORLD_ZOOM } from './worldView';
+import { FLEET_COLORS, anchorOf, along, drawWarship, lane as seaLane } from './fleets';
 
 export interface WorldMapProps {
   map: WorldMapData;
@@ -22,6 +24,10 @@ export interface WorldMapProps {
   troops?: TroopMap | null;
   // Ships at sea (your shipments): from one port city to another.
   ships?: { id: number; from: [number, number]; to: [number, number]; depart: string; arrive: string; label: string }[];
+  // Draw on this existing map (the city map) instead of making our own.
+  attachTo?: MLMap | null;
+  // Warships in port and at sea (yours, your allies', enemies' coming at you).
+  fleets?: FleetMap | null;
 }
 
 export interface TroopMap {
@@ -38,12 +44,14 @@ function shade(hex: string, k: number) {
   return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
 }
 
-export default function WorldMap({ map: data, shapes, state, me, selected, onSelect, mode = 'play', targets, padding, troops, ships }: WorldMapProps) {
+export default function WorldMap({ map: data, shapes, state, me, selected, onSelect, mode = 'play', targets, padding, troops, ships, attachTo, fleets }: WorldMapProps) {
+  // Our layer and source names: prefixed when they share the city's map.
+  const P = attachTo ? 'w-' : '';
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const ready = useRef(false);
-  const latest = useRef({ state, me, selected, targets, mode, troops, ships });
-  latest.current = { state, me, selected, targets, mode, troops, ships };
+  const latest = useRef({ state, me, selected, targets, mode, troops, ships, fleets });
+  latest.current = { state, me, selected, targets, mode, troops, ships, fleets };
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -93,7 +101,7 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         },
       };
     });
-    (m.getSource('countries') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features } as any);
+    (m.getSource(P + 'countries') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features } as any);
     const labels = data.territories.map((t) => {
       const [, ctrl] = holder.get(t.id) ?? [t.id, t.id];
       const n = nations.get(t.id);
@@ -107,7 +115,7 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         },
       };
     });
-    (m.getSource('labels') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: labels } as any);
+    (m.getSource(P + 'labels') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: labels } as any);
     // Troop badges under each country's name: one per side that has troops there.
     const tr = latest.current.troops;
     const badges: any[] = [];
@@ -131,7 +139,7 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         });
       });
     }
-    (m.getSource('troops') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: badges });
+    (m.getSource(P + 'troops') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: badges });
     drawMoves();
   };
 
@@ -142,6 +150,15 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     const now = Date.now();
     const lines: any[] = [];
     const dots: any[] = [];
+    // Fleets at sea sail a curved lane between anchorages, not centre to centre.
+    const fl = latest.current.fleets;
+    const sailing = new Map((fl?.sailing ?? []).map((f) => [f.id, f]));
+    const lane = (from: string, to: string) => {
+      const a = byId.current.get(from);
+      const b = byId.current.get(to);
+      return a && b ? seaLane(anchorOf(from, a.lat, a.lng), anchorOf(to, b.lat, b.lng)) : null;
+    };
+    const seen = new Set<number>();
     for (const mv of s?.moves ?? []) {
       const a = byId.current.get(mv.from);
       const b = byId.current.get(mv.to);
@@ -155,25 +172,64 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       if (a.lng - bl > 180) bl += 360;
       const kind = mv.nation === mine ? 'mine' : mv.kind === 'move' ? 'move' : 'attack';
       const size = latest.current.troops?.moves.find((x) => x.id === mv.id)?.size;
-      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [bl, b.lat]] }, properties: { kind } });
+      const path = sailing.has(mv.id) ? lane(mv.from, mv.to) : null;
+      if (path) seen.add(mv.id);
+      const at = path ? along(path, k) : [a.lng + (bl - a.lng) * k, a.lat + (b.lat - a.lat) * k];
+      lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path ?? [[a.lng, a.lat], [bl, b.lat]] }, properties: { kind } });
       dots.push({
         type: 'Feature',
-        geometry: { type: 'Point', coordinates: [a.lng + (bl - a.lng) * k, a.lat + (b.lat - a.lat) * k] },
-        properties: { kind, missile: mv.kind === 'missile', label: size != null ? `${mv.kind === 'missile' ? '🚀' : '⚔'} ${size} · ${Math.round(k * 100)}%` : '' },
+        geometry: { type: 'Point', coordinates: [at[0], at[1]] },
+        properties: { kind, fleet: !!path, missile: mv.kind === 'missile', label: size != null ? `${mv.kind === 'missile' ? '🚀' : '⚔'} ${size} · ${Math.round(k * 100)}%` : '' },
       });
     }
+    // The warships themselves: one to three models per fleet, by its size,
+    // sailing in formation or riding at anchor off the coast.
+    const warships: any[] = [];
+    const formation = (qty: number) => (qty >= 10 ? 3 : qty >= 3 ? 2 : 1);
+    const addShips = (x: number, y: number, hdg: number, rel: string, qty: number, label: string, moving: boolean) => {
+      for (let i = 0; i < formation(qty); i++) {
+        warships.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [x, y] },
+          properties: { img: `cc-warship-${rel}${moving ? '' : '-still'}`, hdg, slot: i, rel, label: i === 0 ? label : '' },
+        });
+      }
+    };
+    for (const f of fl?.sailing ?? []) {
+      const path = lane(f.from, f.to);
+      if (!path) continue;
+      const t0 = new Date(f.depart_at).getTime();
+      const t1 = new Date(f.arrive_at).getTime();
+      const k = Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
+      if (!seen.has(f.id)) lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: f.rel === 'mine' ? 'mine' : f.rel === 'ally' ? 'move' : 'attack' } });
+      const [x, y, hdg] = along(path, k);
+      const n = f.rel === 'enemy' ? '~' + f.qty : String(f.qty);
+      addShips(x, y, hdg, f.rel, f.qty, `${n} ${f.qty === 1 ? 'fleet' : 'fleets'}${f.troops ? ` · ${f.troops} troops` : ''}`, true);
+    }
+    const order = { mine: 0, ally: 1, enemy: 2 } as const;
+    (fl?.docked ?? []).forEach((d, i) => {
+      const t = byId.current.get(d.t);
+      if (!t) return;
+      const [ax, ay] = anchorOf(d.t, t.lat, t.lng);
+      // Side by side when more than one navy lies off the same coast; lying
+      // along the coast, rocking gently.
+      const shift = order[d.rel] * 0.55;
+      const hdg = (Math.atan2(ax - t.lng, ay - t.lat) * 180) / Math.PI + 90 + Math.sin(now / 1500 + i) * 4;
+      addShips(ax + shift, ay - shift * 0.4, hdg, d.rel, d.qty, `${d.rel === 'enemy' ? '~' : ''}${d.qty} ${d.qty === 1 ? 'fleet' : 'fleets'} in port`, false);
+    });
+    (m.getSource(P + 'fleets') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: warships });
     // Your ships: a dashed sea lane and a boat sailing along it.
     for (const sh of latest.current.ships ?? []) {
       const t0 = new Date(sh.depart).getTime();
       const t1 = new Date(sh.arrive).getTime();
       const k = Math.max(0, Math.min(1, (now - t0) / Math.max(1, t1 - t0)));
-      const path = seaPath(sh.from, sh.to);
+      const path = seaLane(sh.from, sh.to, 0.18); // port to port, around the land
       lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: path }, properties: { kind: 'ship' } });
       const [x, y, hdg] = along(path, k);
       dots.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [x, y] }, properties: { kind: 'ship', ship: true, hdg, label: `${sh.label} · ${Math.round(k * 100)}%` } });
     }
-    (m.getSource('moves') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: lines });
-    (m.getSource('movers') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: dots });
+    (m.getSource(P + 'moves') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: lines });
+    (m.getSource(P + 'movers') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: dots });
     const pulse = (now % 1600) / 1600;
     const battles = (s?.battles ?? [])
       .filter((x) => now - new Date(x.at).getTime() < 10 * 60_000)
@@ -182,97 +238,62 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
         return t ? { type: 'Feature', geometry: { type: 'Point', coordinates: [t.lng, t.lat] }, properties: { captured: x.captured } } : null;
       })
       .filter(Boolean);
-    (m.getSource('battles') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: battles as any[] });
-    if (m.getLayer('battles')) {
-      m.setPaintProperty('battles', 'circle-radius', 6 + pulse * 16);
-      m.setPaintProperty('battles', 'circle-stroke-opacity', 1 - pulse);
+    (m.getSource(P + 'battles') as GeoJSONSource)?.setData({ type: 'FeatureCollection', features: battles as any[] });
+    if (m.getLayer(P + 'battles')) {
+      m.setPaintProperty(P + 'battles', 'circle-radius', 6 + pulse * 16);
+      m.setPaintProperty(P + 'battles', 'circle-stroke-opacity', 1 - pulse);
     }
   };
 
   useEffect(() => {
+    // Attached: add our layers to the city map (they fade in as you zoom out).
+    if (attachTo) {
+      const m = attachTo;
+      const ws = worldStyle(P, true);
+      const add = () => {
+        if (!m.getStyle()) return;
+        if (!m.getGlyphs?.()) m.setGlyphs?.(LOCAL_GLYPHS);
+        for (const [id, src] of Object.entries(ws.sources)) if (!m.getSource(id)) m.addSource(id, src);
+        // The ocean goes just above the city's own background; the rest on top.
+        const firstReal = m.getStyle().layers.find((l) => l.type !== 'background')?.id;
+        for (const l of ws.layers) if (!m.getLayer(l.id)) m.addLayer(l, l.type === 'background' ? firstReal : undefined);
+        addMapImages(m);
+        mapRef.current = m;
+        ready.current = true;
+        paint();
+        drawMoves();
+      };
+      if (m.isStyleLoaded()) add();
+      else m.once('idle', add);
+      const far = () => m.getZoom() < WORLD_ZOOM + 0.3;
+      const onClick = (e: any) => {
+        if (!far()) return;
+        const f = m.queryRenderedFeatures(e.point, { layers: [P + 'fill'] })[0];
+        onSelectRef.current?.(f ? String(f.properties?.id) : null);
+      };
+      m.on('click', onClick);
+      const anim = setInterval(() => far() && drawMoves(), 250);
+      return () => {
+        clearInterval(anim);
+        m.off('click', onClick);
+        ready.current = false;
+        mapRef.current = null;
+        try {
+          if (!m.getStyle()) return;
+          for (const l of ws.layers) if (m.getLayer(l.id)) m.removeLayer(l.id);
+          for (const id of Object.keys(ws.sources)) if (m.getSource(id)) m.removeSource(id);
+        } catch {
+          /* the map is closing */
+        }
+      };
+    }
     if (!el.current) return;
     setFailed(false);
     let m: MLMap;
     try {
     m = new maplibregl.Map({
       container: el.current,
-      style: {
-        version: 8,
-        glyphs: LOCAL_GLYPHS,
-        sources: {
-          countries: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-          labels: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-          moves: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-          movers: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-          battles: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-          troops: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
-        },
-        layers: [
-          { id: 'ocean', type: 'background', paint: { 'background-color': OCEAN } },
-          { id: 'fill', type: 'fill', source: 'countries', paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['case', ['get', 'selected'], 1, 0.88] } },
-          {
-            id: 'occupied', type: 'line', source: 'countries', filter: ['==', ['get', 'occupied'], true],
-            paint: { 'line-color': '#ff6b5a', 'line-width': 2, 'line-dasharray': [1.5, 1.5] },
-          },
-          { id: 'border', type: 'line', source: 'countries', paint: { 'line-color': '#0a1820', 'line-width': 0.7 } },
-          { id: 'enemy', type: 'line', source: 'countries', filter: ['==', ['get', 'enemy'], true], paint: { 'line-color': '#ff5a4a', 'line-width': 1.6 } },
-          { id: 'mine', type: 'line', source: 'countries', filter: ['==', ['get', 'mine'], true], paint: { 'line-color': '#f5c451', 'line-width': 2.2 } },
-          { id: 'target', type: 'line', source: 'countries', filter: ['==', ['get', 'target'], true], paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-dasharray': [2, 1] } },
-          { id: 'selected', type: 'line', source: 'countries', filter: ['==', ['get', 'selected'], true], paint: { 'line-color': '#ffffff', 'line-width': 3 } },
-          {
-            id: 'moves', type: 'line', source: 'moves',
-            paint: {
-              'line-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', 'ship', '#e8f4ff', '#ff6b5a'],
-              'line-width': ['match', ['get', 'kind'], 'ship', 1.4, 2], 'line-dasharray': [2, 1.5], 'line-opacity': ['match', ['get', 'kind'], 'ship', 0.55, 0.9],
-            },
-          },
-          {
-            id: 'movers', type: 'circle', source: 'movers', filter: ['!', ['get', 'ship']],
-            paint: {
-              'circle-radius': ['case', ['get', 'missile'], 4, 6],
-              'circle-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', '#ff6b5a'],
-              'circle-stroke-color': '#0a1820', 'circle-stroke-width': 1.5,
-            },
-          },
-          {
-            id: 'ships', type: 'symbol', source: 'movers', filter: ['==', ['get', 'ship'], true],
-            layout: { 'icon-image': 'cc-ship', 'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.55, 4, 0.9], 'icon-rotate': ['get', 'hdg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true },
-          },
-          {
-            id: 'mover-labels', type: 'symbol', source: 'movers', filter: ['!=', ['get', 'label'], ''],
-            layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-allow-overlap': true },
-            paint: { 'text-color': ['match', ['get', 'kind'], 'mine', '#ffe39a', 'ship', '#e8f4ff', '#ffb3a8'], 'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4 },
-          },
-          {
-            id: 'battles', type: 'circle', source: 'battles',
-            paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#ff5a4a', 'circle-stroke-width': 3 },
-          },
-          {
-            id: 'troop-badges', type: 'symbol', source: 'troops',
-            layout: {
-              'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 1, 10, 4, 13],
-              'text-anchor': 'top',
-              'text-offset': ['match', ['get', 'slot'], 'l1', ['literal', [-1.6, 1.5]], 'r1', ['literal', [1.6, 1.5]], 'l2', ['literal', [-3, 1.5]], 'r2', ['literal', [3, 1.5]], ['literal', [0, 1.5]]],
-              'icon-image': ['match', ['get', 'rel'], 'mine', 'cc-badge-mine', 'ally', 'cc-badge-ally', 'cc-badge-enemy'],
-              'icon-text-fit': 'both', 'icon-text-fit-padding': [2, 6, 2, 6], 'icon-allow-overlap': true, 'text-allow-overlap': true,
-              'symbol-sort-key': ['match', ['get', 'rel'], 'mine', 0, 'ally', 1, 2],
-            },
-            paint: { 'text-color': ['match', ['get', 'rel'], 'mine', '#2b1d02', '#ffffff'] },
-          },
-          {
-            id: 'labels', type: 'symbol', source: 'labels',
-            layout: {
-              'text-field': ['get', 'name'],
-              'text-font': ['Noto Sans Bold'],
-              'text-size': ['interpolate', ['linear'], ['zoom'], 1, 9, 3, 12, 5, 15],
-              'symbol-sort-key': ['get', 'rank'],
-              'text-max-width': 8,
-              'text-padding': 2,
-            },
-            paint: { 'text-color': ['case', ['get', 'leader'], '#fff6d6', '#f2f6f8'], 'text-halo-color': 'rgba(8,20,28,0.85)', 'text-halo-width': 1.4 },
-          },
-        ],
-      },
+      style: { version: 8, glyphs: LOCAL_GLYPHS, ...worldStyle(P, false) },
       center: [15, 25],
       zoom: 1.25,
       minZoom: 0.6,
@@ -312,11 +333,11 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
     const ro = new ResizeObserver(() => m.resize());
     ro.observe(el.current);
     m.on('click', (e) => {
-      const f = m.queryRenderedFeatures(e.point, { layers: ['fill'] })[0];
+      const f = m.queryRenderedFeatures(e.point, { layers: [P + 'fill'] })[0];
       onSelectRef.current?.(f ? String(f.properties?.id) : null);
     });
     m.on('mousemove', (e) => {
-      m.getCanvas().style.cursor = m.queryRenderedFeatures(e.point, { layers: ['fill'] }).length ? 'pointer' : '';
+      m.getCanvas().style.cursor = m.queryRenderedFeatures(e.point, { layers: [P + 'fill'] }).length ? 'pointer' : '';
     });
     const anim = setInterval(drawMoves, 250);
     return () => {
@@ -328,27 +349,32 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       ready.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gen]);
+  }, [gen, attachTo]);
 
-  useEffect(paint, [state, me, selected, targets, mode, troops, ships]);
+  useEffect(paint, [state, me, selected, targets, mode, troops, ships, fleets]);
 
   // Keep the selected country in view, clear of the side panel.
   useEffect(() => {
     const m = mapRef.current;
     if (!m) return;
-    m.setPadding({ top: padding?.top ?? 0, right: padding?.right ?? 0, bottom: padding?.bottom ?? 0, left: padding?.left ?? 0 });
+    const want = { top: padding?.top ?? 0, right: padding?.right ?? 0, bottom: padding?.bottom ?? 0, left: padding?.left ?? 0 };
+    const cur = m.getPadding();
+    // setPadding jumps the camera (cancelling any flight), so only when it changes.
+    if (cur.top !== want.top || cur.right !== want.right || cur.bottom !== want.bottom || cur.left !== want.left) m.setPadding(want);
   }, [padding?.right, padding?.bottom, padding?.top, padding?.left]);
 
   // Fly to a country when asked (e.g. your own nation on opening).
   useEffect(() => {
     const on = (e: Event) => {
       const t = byId.current.get((e as CustomEvent).detail);
-      if (t && mapRef.current) mapRef.current.flyTo({ center: [t.lng, t.lat], zoom: Math.max(mapRef.current.getZoom(), 2.6), duration: 900 });
+      // A country-sized view (not the city zoom a flight might be passing through).
+      if (t && mapRef.current) mapRef.current.flyTo({ center: [t.lng, t.lat], zoom: Math.min(4.5, Math.max(mapRef.current.getZoom(), 2.6)), pitch: 0, bearing: 0, duration: 900 });
     };
     window.addEventListener('cc:worldfly', on);
     return () => window.removeEventListener('cc:worldfly', on);
   }, []);
 
+  if (attachTo) return null;
   return (
     <>
       <div ref={el} className="world-map" />
@@ -360,6 +386,129 @@ export default function WorldMap({ map: data, shapes, state, me, selected, onSel
       )}
     </>
   );
+}
+
+// The world's layers (ids prefixed with P), for the standalone map or for
+// the city map they attach to (where they fade out as you zoom in).
+function worldStyle(P: string, attached: boolean) {
+  const sources: Record<string, any> = {
+          [P + 'countries']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'labels']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'moves']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'movers']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'battles']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'troops']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+          [P + 'fleets']: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+        };
+  const layers: any[] = [
+          { id: P + 'ocean', type: 'background', paint: { 'background-color': OCEAN } },
+          { id: P + 'fill', type: 'fill', source: P + 'countries', paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['case', ['get', 'selected'], 1, 0.88] } },
+          {
+            id: P + 'occupied', type: 'line', source: P + 'countries', filter: ['==', ['get', 'occupied'], true],
+            paint: { 'line-color': '#ff6b5a', 'line-width': 2, 'line-dasharray': [1.5, 1.5] },
+          },
+          { id: P + 'border', type: 'line', source: P + 'countries', paint: { 'line-color': '#0a1820', 'line-width': 0.7 } },
+          { id: P + 'enemy', type: 'line', source: P + 'countries', filter: ['==', ['get', 'enemy'], true], paint: { 'line-color': '#ff5a4a', 'line-width': 1.6 } },
+          { id: P + 'mine', type: 'line', source: P + 'countries', filter: ['==', ['get', 'mine'], true], paint: { 'line-color': '#f5c451', 'line-width': 2.2 } },
+          { id: P + 'target', type: 'line', source: P + 'countries', filter: ['==', ['get', 'target'], true], paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-dasharray': [2, 1] } },
+          { id: P + 'selected', type: 'line', source: P + 'countries', filter: ['==', ['get', 'selected'], true], paint: { 'line-color': '#ffffff', 'line-width': 3 } },
+          {
+            id: P + 'moves', type: 'line', source: P + 'moves',
+            paint: {
+              'line-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', 'ship', '#e8f4ff', '#ff6b5a'],
+              'line-width': ['match', ['get', 'kind'], 'ship', 1.4, 2], 'line-dasharray': [2, 1.5], 'line-opacity': ['match', ['get', 'kind'], 'ship', 0.55, 0.9],
+            },
+          },
+          {
+            id: P + 'movers', type: 'circle', source: P + 'movers', filter: ['!', ['get', 'ship']],
+            paint: {
+              // A fleet's dot gives way to its warships once you zoom in.
+              'circle-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
+              'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
+              'circle-radius': ['case', ['get', 'missile'], 4, 6],
+              'circle-color': ['match', ['get', 'kind'], 'mine', '#f5c451', 'move', '#8fd3ff', '#ff6b5a'],
+              'circle-stroke-color': '#0a1820', 'circle-stroke-width': 1.5,
+            },
+          },
+          {
+            id: P + 'ships', type: 'symbol', source: P + 'movers', filter: ['==', ['get', 'ship'], true],
+            layout: { 'icon-image': 'cc-ship', 'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.55, 4, 0.9], 'icon-rotate': ['get', 'hdg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true },
+          },
+          {
+            id: P + 'warships', type: 'symbol', source: P + 'fleets', minzoom: 2.4,
+            layout: {
+              'icon-image': ['get', 'img'],
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 2.4, 0.4, 4, 0.7, 6, 1.05, 9, 1.6],
+              'icon-rotate': ['get', 'hdg'],
+              'icon-rotation-alignment': 'map',
+              'icon-pitch-alignment': 'map',
+              // Escorts sail behind and to either side of the flagship.
+              'icon-offset': ['match', ['get', 'slot'], 1, ['literal', [-20, 40]], 2, ['literal', [20, 40]], ['literal', [0, 0]]],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+              'symbol-sort-key': ['get', 'slot'],
+            },
+            paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], 2.4, 0, 3.1, 1] },
+          },
+          {
+            id: P + 'warship-labels', type: 'symbol', source: P + 'fleets', minzoom: 3.3, filter: ['!=', ['get', 'label'], ''],
+            layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 2.2], 'text-anchor': 'top', 'text-allow-overlap': true },
+            paint: {
+              'text-color': ['match', ['get', 'rel'], 'mine', '#ffe39a', 'ally', '#cfe6ff', '#ffb3a8'],
+              'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4,
+              'text-opacity': ['interpolate', ['linear'], ['zoom'], 3.3, 0, 3.8, 1],
+            },
+          },
+          {
+            id: P + 'mover-labels', type: 'symbol', source: P + 'movers', filter: ['!=', ['get', 'label'], ''],
+            layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-allow-overlap': true },
+            paint: {
+              'text-color': ['match', ['get', 'kind'], 'mine', '#ffe39a', 'ship', '#e8f4ff', '#ffb3a8'], 'text-halo-color': 'rgba(8,20,28,0.9)', 'text-halo-width': 1.4,
+              'text-opacity': ['interpolate', ['linear'], ['zoom'], 2.6, 1, 3.2, ['case', ['get', 'fleet'], 0, 1]],
+            },
+          },
+          {
+            id: P + 'battles', type: 'circle', source: P + 'battles',
+            paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#ff5a4a', 'circle-stroke-width': 3 },
+          },
+          {
+            id: P + 'troop-badges', type: 'symbol', source: P + 'troops',
+            layout: {
+              'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 1, 10, 4, 13],
+              'text-anchor': 'top',
+              'text-offset': ['match', ['get', 'slot'], 'l1', ['literal', [-1.6, 1.5]], 'r1', ['literal', [1.6, 1.5]], 'l2', ['literal', [-3, 1.5]], 'r2', ['literal', [3, 1.5]], ['literal', [0, 1.5]]],
+              'icon-image': ['match', ['get', 'rel'], 'mine', 'cc-badge-mine', 'ally', 'cc-badge-ally', 'cc-badge-enemy'],
+              'icon-text-fit': 'both', 'icon-text-fit-padding': [2, 6, 2, 6], 'icon-allow-overlap': true, 'text-allow-overlap': true,
+              'symbol-sort-key': ['match', ['get', 'rel'], 'mine', 0, 'ally', 1, 2],
+            },
+            paint: { 'text-color': ['match', ['get', 'rel'], 'mine', '#2b1d02', '#ffffff'] },
+          },
+          {
+            id: P + 'labels', type: 'symbol', source: P + 'labels',
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Bold'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 1, 9, 3, 12, 5, 15],
+              'symbol-sort-key': ['get', 'rank'],
+              'text-max-width': 8,
+              'text-padding': 2,
+            },
+            paint: { 'text-color': ['case', ['get', 'leader'], '#fff6d6', '#f2f6f8'], 'text-halo-color': 'rgba(8,20,28,0.85)', 'text-halo-width': 1.4 },
+          },
+        ];
+  if (attached) {
+    for (const l of layers) {
+      if (l.type === 'background') {
+        l.paint = { ...l.paint, 'background-opacity': ['interpolate', ['linear'], ['zoom'], WORLD_ZOOM - 3.5, 1, WORLD_ZOOM, 0.35, WORLD_ZOOM + 0.6, 0] };
+        l.maxzoom = WORLD_ZOOM + 0.7;
+      } else {
+        l.maxzoom = WORLD_ZOOM + 0.6;
+      }
+      // Countries fade gradually as you come down towards the city.
+      if (l.type === 'fill') l.paint = { ...l.paint, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], WORLD_ZOOM - 5, 0.88, WORLD_ZOOM - 1.5, 0.35, WORLD_ZOOM + 0.5, 0] };
+    }
+  }
+  return { sources, layers };
 }
 
 // Badge backgrounds (stretched around the number) and the ship icon, drawn
@@ -380,6 +529,13 @@ function addMapImages(m: MLMap) {
     return { width: 24, height: 24, data: new Uint8Array(g.getImageData(0, 0, 24, 24).data.buffer) };
   };
   const opts = { stretchX: [[9, 15]] as [number, number][], stretchY: [[9, 15]] as [number, number][], content: [6, 6, 18, 18] as [number, number, number, number] };
+  if (!m.hasImage('cc-warship-mine')) {
+    for (const [rel, color] of Object.entries(FLEET_COLORS)) {
+      m.addImage(`cc-warship-${rel}`, drawWarship(color, true), { pixelRatio: 2 });
+      m.addImage(`cc-warship-${rel}-still`, drawWarship(color, false), { pixelRatio: 2 });
+    }
+  }
+  if (m.hasImage('cc-ship')) return;
   m.addImage('cc-badge-mine', badge('#f5c451', '#7a5a12'), opts);
   m.addImage('cc-badge-ally', badge('#2f78b7', '#cfe6ff'), opts);
   m.addImage('cc-badge-enemy', badge('#c2412c', '#ffd0c8'), opts);
@@ -406,36 +562,3 @@ function addMapImages(m: MLMap) {
   g.fillRect(10, 31, 8, 3);
   m.addImage('cc-ship', { width: 28, height: 40, data: new Uint8Array(g.getImageData(0, 0, 28, 40).data.buffer) }, { pixelRatio: 2 });
 }
-
-// A sea lane between two ports: a gentle curve (good enough on a flat map),
-// crossing the date line the short way.
-function seaPath(a: [number, number], b: [number, number]): [number, number][] {
-  let bl = b[0];
-  if (bl - a[0] > 180) bl -= 360;
-  if (a[0] - bl > 180) bl += 360;
-  const mx = (a[0] + bl) / 2;
-  const my = (a[1] + b[1]) / 2;
-  const dx = bl - a[0];
-  const dy = b[1] - a[1];
-  const bend = 0.18;
-  const cx = mx - dy * bend;
-  const cy = my + dx * bend;
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= 24; i++) {
-    const t = i / 24;
-    pts.push([(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * cx + t * t * bl, (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * cy + t * t * b[1]]);
-  }
-  return pts;
-}
-
-// The point a fraction k along a path, and the heading there (degrees).
-function along(path: [number, number][], k: number): [number, number, number] {
-  const f = Math.min(path.length - 1.0001, Math.max(0, k * (path.length - 1)));
-  const i = Math.floor(f);
-  const t = f - i;
-  const [x0, y0] = path[i];
-  const [x1, y1] = path[i + 1];
-  const hdg = (Math.atan2(x1 - x0, y1 - y0) * 180) / Math.PI;
-  return [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, hdg];
-}
-

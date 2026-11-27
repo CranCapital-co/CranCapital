@@ -117,6 +117,15 @@ test('press everything', { timeout: 300_000 }, async () => {
     }
     await page.getByRole('button', { name: /^Recruit \d+/ }).click();
     await page.getByText(/Training \d+ infantry/).first().waitFor({ timeout: 10_000 });
+    // Military upgrades: troopships, once the navy is researched.
+    await q(`insert into game.nation_techs (nation_id, tech) select nation, 'navy' from (select game.player_nation($1) nation) x on conflict do nothing`, [me.id]);
+    await page.getByRole('tab', { name: 'Research' }).click();
+    await page.getByRole('tab', { name: 'Military' }).click();
+    const troopships = page.locator('.upgrade-row', { hasText: 'Troopships' });
+    await troopships.locator('button').click({ timeout: 15_000 });
+    await page.waitForFunction(() => document.body.innerText.includes('Troopships level 1'), null, { timeout: 10_000 });
+    assert.equal(Number((await one(`select level from game.nation_upgrades where track = 'troopships' and nation_id = game.player_nation($1)`, [me.id])).level), 1);
+    assert.ok(await page.locator('.upgrade-row', { hasText: 'Missile range' }).isVisible());
     // Research costs money too.
     await page.getByRole('tab', { name: 'Research' }).click();
     await page.locator('.tech:not(.done):not(.locked) button').first().click();
